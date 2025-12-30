@@ -9,17 +9,11 @@
 #include "mm/pm.h"
 #include "uapi/errno.h"
 #include "utils/list.h"
-#include "utils/math.h"
 #include "utils/string.h"
+#include "utils/xarray.h"
 #include <stdint.h>
 
 #define INITIAL_PAGE_CAPACITY 1
-
-typedef struct
-{
-    void *data;
-}
-ramfs_page_t;
 
 typedef struct ramfs_node ramfs_node_t;
 
@@ -29,9 +23,8 @@ struct ramfs_node
 
     ramfs_node_t *parent;
     list_t children;
-    ramfs_page_t *pages;
+    xarray_t pages;
     size_t page_count;
-    size_t page_capacity;
 
     list_node_t list_node;
 };
@@ -69,25 +62,25 @@ static int read(vnode_t *self, void *buffer, uint64_t count, uint64_t offset, ui
 {
     ramfs_node_t *node = (ramfs_node_t *)self;
 
-    uint64_t page_start = 0;
     uint64_t copied = 0;
+    uint8_t *dst = buffer;
 
-    for (size_t i = 0; i < node->page_count; i++)
+    while (copied < count)
     {
-        ramfs_page_t *page = &node->pages[i];
+        uint64_t curr_off = offset + copied;
+        size_t page_idx = curr_off / ARCH_PAGE_GRAN;
+        size_t page_off = curr_off % ARCH_PAGE_GRAN; // offset within the page
 
-        if (offset >= page_start && page_start < offset + count)
-        {
-            uint64_t page_offset = offset - page_start;
-            uint64_t bytes_to_copy = MIN(ARCH_PAGE_GRAN - page_offset, count - copied);
-            memcpy((uint8_t *)buffer + copied, (uint8_t *)page->data + page_offset, bytes_to_copy);
-            copied += bytes_to_copy;
-        }
+        size_t to_copy = ARCH_PAGE_GRAN - page_off;
+        if (to_copy > count - copied)
+            to_copy = count - copied;
 
-        page_start += ARCH_PAGE_GRAN;
+        void *page = xa_get(&node->pages, page_idx);
+        if (!page)
+            break; // end of file
 
-        if (copied >= count)
-            break;
+        memcpy(dst + copied, (uint8_t *)page + page_off, to_copy);
+        copied += to_copy;
     }
 
     node->vn.atime = arch_clock_get_unix_time();
@@ -99,53 +92,38 @@ static int read(vnode_t *self, void *buffer, uint64_t count, uint64_t offset, ui
 static int write(vnode_t *self, const void *buffer, uint64_t count, uint64_t offset, uint64_t *out)
 {
     ramfs_node_t *node = (ramfs_node_t *)self;
-    uint64_t page_start = 0;
-    uint64_t copied = 0;
-    uint64_t needed_page_count = CEIL(offset + count, ARCH_PAGE_GRAN) / ARCH_PAGE_GRAN;
 
-    if (needed_page_count > node->page_capacity)
+    uint64_t written = 0;
+    const uint8_t *src = buffer;
+
+    while (written < count)
     {
-        size_t new_capacity = MAX(needed_page_count, node->page_capacity * 2);
+        uint64_t curr_off = offset + written;
+        size_t page_idx = curr_off / ARCH_PAGE_GRAN;
+        size_t page_off = curr_off % ARCH_PAGE_GRAN;
 
-        node->pages = heap_realloc(
-            node->pages,
-            sizeof(ramfs_page_t) * node->page_capacity,
-            sizeof(ramfs_page_t) * new_capacity
-        );
-        node->page_capacity = new_capacity;
-    }
+        size_t to_copy = ARCH_PAGE_GRAN - page_off;
+        if (to_copy > count - written)
+            to_copy = count - written;
 
-    while (node->page_count < needed_page_count)
-    {
-        node->pages[node->page_count].data = (void *)(pm_alloc(0) + HHDM);
-        node->page_count++;
-    }
-
-    for (size_t i = 0; i < node->page_count; i++)
-    {
-        ramfs_page_t *page = &node->pages[i];
-
-        if (offset >= page_start && page_start < offset + count)
+        void *page = xa_get(&node->pages, page_idx);
+        if (!page)
         {
-            uint64_t page_offset = offset - page_start;
-            uint64_t bytes_to_copy = MIN(ARCH_PAGE_GRAN - page_offset, count - copied);
-
-            memcpy((uint8_t *)page->data + page_offset,
-                   (uint8_t *)buffer + copied,
-                   bytes_to_copy);
-
-            copied += bytes_to_copy;
+            page = (void*)(pm_alloc(0) + HHDM);
+            xa_insert(&node->pages, page_idx, page);
         }
 
-        page_start += ARCH_PAGE_GRAN;
+        memcpy((uint8_t *)page + page_off, src + written, to_copy);
+        written += to_copy;
     }
 
-    if (offset + copied > node->vn.size)
-        node->vn.size = offset + copied;
+    uint64_t end = offset + written;
+    if (end > node->vn.size)
+        node->vn.size = end;
 
-    node->vn.mtime = arch_clock_get_unix_time();
+    node->vn.mtime = node->vn.ctime = arch_clock_get_unix_time();
 
-    *out = copied;
+    *out = written;
     return EOK;
 }
 
@@ -198,9 +176,8 @@ static int create(vnode_t *self, const char *name, vnode_type_t t, vnode_t **out
         },
         .parent = current,
         .children = LIST_INIT,
-        .pages = heap_alloc(sizeof(ramfs_page_t) * INITIAL_PAGE_CAPACITY),
+        .pages = XARRAY_INIT,
         .page_count = 0,
-        .page_capacity = INITIAL_PAGE_CAPACITY,
         .list_node = LIST_NODE_INIT,
     };
 
@@ -231,9 +208,8 @@ vfs_t *ramfs_create()
         },
         .parent = ramfs_root,
         .children = LIST_INIT,
-        .pages = heap_alloc(sizeof(ramfs_page_t) * INITIAL_PAGE_CAPACITY),
+        .pages = XARRAY_INIT,
         .page_count = 0,
-        .page_capacity = INITIAL_PAGE_CAPACITY,
         .list_node = LIST_NODE_INIT,
     };
 

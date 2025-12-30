@@ -114,3 +114,24 @@ void *xa_remove(xarray_t *xa, size_t index)
 
     return target;
 }
+
+void *xa_get(const xarray_t *xa, size_t index)
+{
+    xa_node_t *n = xa->root;
+    if (!n)
+        return NULL;
+
+    for (int lvl = XA_LEVELS - 1; lvl > 0; lvl--)
+    {
+        size_t shift = lvl * XA_SHIFT;
+        size_t slot = ((index >> shift) & XA_MASK);
+
+        n = (xa_node_t *)n->slots[slot];
+        if (!n)
+            return NULL;
+    }
+
+    // leaf
+
+    return n->slots[index & XA_MASK];
+}

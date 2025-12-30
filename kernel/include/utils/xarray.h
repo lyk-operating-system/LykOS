@@ -26,3 +26,5 @@ xarray_t;
 
 bool xa_insert(xarray_t *xa, size_t index, void *value);
 void *xa_remove(xarray_t *xa, size_t index);
+
+void *xa_get(const xarray_t *xa, size_t index);
