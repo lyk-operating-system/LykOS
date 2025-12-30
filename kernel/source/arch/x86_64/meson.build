@@ -5,11 +5,13 @@ subdir('tables')
 asm_files += files(
     'syscall.asm',
     'thread.asm',
-    'userspace.asm'
+    'userspace.asm',
 )
 
 c_files += files(
+    'cpuid.c',
     'entry.c',
+    'fpu.c',
     'ioport.c',
     'lcpu.c',
     'msr.c',

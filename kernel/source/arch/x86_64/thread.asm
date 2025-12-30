@@ -1,7 +1,7 @@
 global __thread_context_switch
 extern sched_drop
 
-%define THREAD_RSP_OFFSET 24
+%define THREAD_RSP_OFFSET 32
 
 __thread_context_switch:
     push rax

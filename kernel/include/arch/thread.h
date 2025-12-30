@@ -8,6 +8,7 @@ typedef struct arch_thread_context
 #if defined(__x86_64__)
     struct arch_thread_context *self;
     uint64_t fs, gs;
+    void *fpu_area;
 #elif defined(__aarch64__)
 #endif
     uint64_t rsp;

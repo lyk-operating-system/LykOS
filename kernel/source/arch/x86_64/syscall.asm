@@ -1,7 +1,7 @@
 global x86_64_arch_syscall_entry
 
-%define KERNEL_STACK_OFFSET 32
-%define SYSCALL_STACK_OFFSET 40
+%define KERNEL_STACK_OFFSET 40
+%define SYSCALL_STACK_OFFSET 48
 
 extern syscall_table
 extern syscall_table_length

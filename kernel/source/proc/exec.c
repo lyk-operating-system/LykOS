@@ -69,7 +69,7 @@ int exec_load(vnode_t *file, proc_t **out)
                 0,
                 &out
             );
-            log(LOG_DEBUG, "%p %p", start, out);
+
             if (err != EOK || out != start)
             {
                 // TODO: delete proc
