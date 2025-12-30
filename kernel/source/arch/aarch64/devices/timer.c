@@ -61,6 +61,14 @@ size_t arch_timer_get_local_irq(void)
     return 28;
 }
 
+uint64_t arch_timer_get_uptime_ns(void)
+{
+    uint64_t cnt = arch_timer_read_cntvct();
+    uint64_t freq = arch_timer_get_cntfrq();
+
+    return (cnt * 1000000000ULL) / freq;
+}
+
 // Initialization
 
 void aarch64_timer_init()

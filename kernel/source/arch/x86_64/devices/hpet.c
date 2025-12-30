@@ -1,3 +1,4 @@
+#include "arch/timer.h"
 #include "hhdm.h"
 #include "include/arch/x86_64/devices/hpet.h"
 #include "include/dev/acpi/acpi.h"
@@ -75,4 +76,12 @@ void hpet_sleep_ns(uint64_t nanoseconds)
 
     while (hpet_read_counter() < end)
         __asm__ volatile ("pause");
+}
+
+uint64_t arch_timer_get_uptime_ns(void)
+{
+    uint64_t cnt = hpet_read_counter();
+    uint64_t freq = hpet_get_frequency();
+
+    return (cnt * 1000000000ULL) / freq;
 }
