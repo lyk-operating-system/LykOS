@@ -13,6 +13,6 @@ typedef struct
 }
 arch_clock_snapshot_t;
 
-void arch_clock_get_snapshot(arch_clock_snapshot_t *out);
+bool arch_clock_get_snapshot(arch_clock_snapshot_t *out);
 
 uint64_t arch_clock_get_unix_time();

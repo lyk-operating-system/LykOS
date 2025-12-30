@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdarg.h>
+#include "include/arch/clock.h"
 
 typedef enum
 {

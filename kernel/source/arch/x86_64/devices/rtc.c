@@ -48,7 +48,7 @@ static void read_snapshot(arch_clock_snapshot_t *s)
 
 // API
 
-void arch_clock_get_snapshot(arch_clock_snapshot_t *out)
+bool arch_clock_get_snapshot(arch_clock_snapshot_t *out)
 {
     arch_clock_snapshot_t a, b;
 
@@ -92,6 +92,14 @@ void arch_clock_get_snapshot(arch_clock_snapshot_t *out)
     }
 
     out->year += 2000;
+
+    if (out->sec >= 60 || out->min >= 60 || out->hour >= 24 ||
+        out->day < 1 || out->day > 31 ||
+        out->month < 1 || out->month > 12 ||
+        out->year < 1970)
+        return false;
+    
+    return true;
 }
 
 uint64_t arch_clock_get_unix_time()

@@ -2,7 +2,7 @@
 
 #include <stddef.h>
 
-void arch_clock_get_snapshot(arch_clock_snapshot_t *out)
+bool arch_clock_get_snapshot(arch_clock_snapshot_t *out)
 {
     (void)out;
 }
