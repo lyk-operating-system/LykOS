@@ -45,7 +45,7 @@ source/tools {
 package/apps {
     dependencies: [
         source/apps source/support
-        image/meson
+        image/meson image/nasm
         tool/gcc
     ]
     options: [ "arch" ]

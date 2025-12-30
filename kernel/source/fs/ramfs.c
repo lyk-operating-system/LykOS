@@ -72,10 +72,12 @@ static int read(vnode_t *self, void *buffer, uint64_t count, uint64_t offset, ui
     uint64_t page_start = 0;
     uint64_t copied = 0;
 
-    for (size_t i = 0; i < node->page_count; i++) {
+    for (size_t i = 0; i < node->page_count; i++)
+    {
         ramfs_page_t *page = &node->pages[i];
 
-        if (offset >= page_start && page_start < offset + count) {
+        if (offset >= page_start && page_start < offset + count)
+        {
             uint64_t page_offset = offset - page_start;
             uint64_t bytes_to_copy = MIN(ARCH_PAGE_GRAN - page_offset, count - copied);
             memcpy((uint8_t *)buffer + copied, (uint8_t *)page->data + page_offset, bytes_to_copy);
@@ -213,7 +215,7 @@ static int create(vnode_t *self, const char *name, vnode_type_t t, vnode_t **out
 vfs_t *ramfs_create()
 {
     uint64_t now = arch_clock_get_unix_time();
-    
+
     ramfs_node_t *ramfs_root = heap_alloc(sizeof(ramfs_node_t));
     *ramfs_root = (ramfs_node_t) {
         .vn = {

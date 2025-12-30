@@ -20,9 +20,7 @@ static uint64_t ustar_parse_octal(const char *str, size_t len)
 {
     uint64_t result = 0;
     for (size_t i = 0; i < len && str[i] >= '0' && str[i] <= '7'; i++)
-    {
         result = (result << 3) + (str[i] - '0');
-    }
     return result;
 }
 
@@ -39,13 +37,11 @@ static int ustar_validate_checksum(const ustar_header_t *header)
 
     for (size_t i = 0; i < sizeof(ustar_header_t); i++)
     {
-        if ( i >= offsetof(ustar_header_t, checksum) &&
-            i < offsetof(ustar_header_t, checksum) + sizeof(header->checksum))
-        {
+        if (i >= offsetof(ustar_header_t, checksum)
+        &&  i < offsetof(ustar_header_t, checksum) + sizeof(header->checksum))
             sum += ' ';
-        } else {
+        else
             sum += bytes[i];
-        }
     }
 
     return sum == stored;
@@ -70,8 +66,10 @@ static vnode_t *create_path(vnode_t *root, const char *path, int is_dir)
         if (current->ops->lookup(current, token, &child) != EOK || !child)
         {
             vnode_type_t type;
-            if (is_last && !is_dir) type = VREG;
-            else type = VDIR;
+            if (is_last && !is_dir)
+                type = VREG;
+            else
+                type = VDIR;
 
             if(vfs_create(current, token, type, &child) != EOK)
             {
@@ -90,7 +88,8 @@ static vnode_t *create_path(vnode_t *root, const char *path, int is_dir)
 
 int ustar_extract(const void *archive, uint64_t archive_size, vnode_t *dest_vn)
 {
-    if ( !archive || !dest_vn) return EINVAL;
+    if (!archive || !dest_vn)
+        return EINVAL;
 
     const uint8_t *data = (const uint8_t *)archive;
     uint64_t offset = 0;
@@ -137,7 +136,8 @@ int ustar_extract(const void *archive, uint64_t archive_size, vnode_t *dest_vn)
                 if(file_vn && file_size > 0)
                 {
                     uint64_t written;
-                    if (vfs_write(file_vn, (void *)(data+offset), file_size, 0, &written) != EOK)
+                    if (vfs_write(file_vn, (void *)(data + offset), file_size, 0, &written) != EOK
+                    ||  written != file_size)
                         log(LOG_ERROR, "USTAR: failed to write to created file");
                 }
                 break;
@@ -145,7 +145,6 @@ int ustar_extract(const void *archive, uint64_t archive_size, vnode_t *dest_vn)
 
             default:
                 break;
-
         }
 
         uint64_t blocks = (file_size + USTAR_BLOCK_SIZE - 1) / USTAR_BLOCK_SIZE;
