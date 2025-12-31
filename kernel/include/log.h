@@ -11,12 +11,13 @@ typedef enum {
 } log_level_t;
 
 void vlog(log_level_t level, const char *component, const char *format, va_list vargs);
-void _log(log_level_t level, const char *component, const char *file, const char *format, ...);
+void _log(log_level_t level, const char *component, const char *format, ...);
+
 
 #ifdef LOG_PREFIX
-    #define LOG_COMPONENT LOG_PREFIX
+#define log(LEVEL, FORMAT, ...) \
+    _log(LEVEL, LOG_PREFIX, FORMAT, ##__VA_ARGS__)
 #else
-    #define LOG_COMPONENT NULL
+#define log(LEVEL, FORMAT, ...) \
+    _log(LEVEL, __FILE_NAME__, FORMAT, ##__VA_ARGS__)
 #endif
-
-#define log(LEVEL, FORMAT, ...) _log(LEVEL, LOG_COMPONENT, __FILE__, FORMAT, ##__VA_ARGS__)
