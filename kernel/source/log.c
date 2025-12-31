@@ -9,17 +9,12 @@
 
 static spinlock_t slock = SPINLOCK_INIT;
 
-static const char *month_names[] = {
-    "Jan","Feb","Mar","Apr","May","Jun",
-    "Jul","Aug","Sep","Oct","Nov","Dec"
-};
-
-const char *level_to_string(log_level_t level){
+static const char *level_to_string(log_level_t level){
     static const char *names[] = { "DEBUG","INFO","WARN","ERROR","FATAL" };
     return names[level];
 }
 
-static inline void format_file_component(const char *path, char *out, size_t out_size)
+static void format_file_component(const char *path, char *out, size_t out_size)
 {
     const char *file = strrchr(path, '/');
     if (file)
@@ -55,18 +50,31 @@ void vlog(log_level_t level, const char *component, const char *format, va_list 
     if (arch_clock_get_snapshot(&now)) 
     {
         if (component)
+        {
             snprintf(out, sizeof(out),
-                "%s %02u %02u:%02u:%02u %-5s %s : %s",
-                month_names[now.month - 1], now.day, now.hour, now.min, now.sec,
-                level_to_string(level), component, msg);
+                "[%02u:%02u:%02u|%5s|%s] %s",
+                now.hour,
+                now.min,
+                now.sec,
+                level_to_string(level),
+                component,
+                msg);
+        }
         else
+        {
             snprintf(out, sizeof(out),
-                "%s %02u %02u:%02u:%02u %-5s %s",
-                month_names[now.month - 1], now.day, now.hour, now.min, now.sec,
-                level_to_string(level), msg);
-    } 
-    else 
+                "[%02u:%02u:%02u|%5s] %s",
+                now.hour,
+                now.min,
+                now.sec,
+                level_to_string(level),
+                msg);
+        }
+    }
+    else
+    {
         snprintf(out, sizeof(out), "%s", msg);
+    }
 
     spinlock_acquire(&slock);
     arch_serial_write(out); arch_serial_write("\n");
