@@ -7,7 +7,6 @@
 #include "uapi/errno.h"
 #include "utils/list.h"
 #include "utils/string.h"
-#include <stdbool.h>
 
 typedef struct trie_node trie_node_t;
 

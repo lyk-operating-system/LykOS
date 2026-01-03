@@ -189,11 +189,6 @@ static int create(vnode_t *self, const char *name, vnode_type_t t, vnode_t **out
     return EOK;
 }
 
-static int ioctl(vnode_t *vn, uint64_t cmd, void *arg)
-{
-    return ENOTSUP;
-}
-
 static int remove(vnode_t *self, const char *name)
 {
     ramfs_node_t *current = (ramfs_node_t *)self;
@@ -216,6 +211,11 @@ static int remove(vnode_t *self, const char *name)
     }
     
     return ENOENT;
+}
+
+static int ioctl(vnode_t *vn, uint64_t cmd, void *arg)
+{
+    return ENOTSUP;
 }
 
 //
