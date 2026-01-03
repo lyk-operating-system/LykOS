@@ -56,15 +56,14 @@ static vnode_t *create_path(vnode_t *root, const char *path, int is_dir)
     char *saveptr;
     char *token = strtok_r(path_copy, "/", &saveptr);
     char current_path[PATH_MAX_NAME_LEN] = "";
-    vnode_t *current = NULL;
+    vnode_t *current = root;
 
     while (token)
     {
         char *next_token = strtok_r(NULL, "/", &saveptr);
         int is_last = (next_token == NULL);
 
-        if (strcmp(current_path, "/") != 0)
-            strcat(current_path, "/");
+        strcat(current_path, "/");
         strcat(current_path, token);
 
         vnode_type_t type;
