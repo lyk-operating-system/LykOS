@@ -41,12 +41,14 @@ static int read  (vnode_t *self, void *buffer, uint64_t offset, uint64_t count, 
 static int write (vnode_t *self, const void *buffer, uint64_t offset, uint64_t count, uint64_t *out);
 static int lookup(vnode_t *self, const char *name, vnode_t **out);
 static int create(vnode_t *self, const char *name, vnode_type_t t, vnode_t **out);
+static int remove(vnode_t *self, const char *name);
 
 vnode_ops_t ramfs_node_ops = {
     .read   = read,
     .write  = write,
     .lookup = lookup,
-    .create = create
+    .create = create,
+    .remove = remove
 };
 
 // Filesystem Operations
