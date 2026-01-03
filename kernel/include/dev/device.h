@@ -7,6 +7,7 @@
 
 typedef enum
 {
+    DEVICE_CLASS_UNKNOWN,
     DEVICE_CLASS_BLOCK,
     DEVICE_CLASS_INPUT,
     DEVICE_CLASS_NETWORK
@@ -94,7 +95,27 @@ struct driver
     spinlock_t slock;
 };
 
-bool bus_register(bus_t *bus);
+bus_t *bus_register(
+    const char *name,
+    int  (*probe) (device_t *),
+    void (*remove)(device_t *)
+);
 bus_t *bus_lookup(const char *name);
 
-bool driver_register(bus_t *bus, driver_t *drv);
+device_t *device_register(
+    bus_t           *bus,
+    const char      *name,
+    device_class_t   class,
+    void            *device_ident_data
+);
+
+driver_t *driver_register(
+    bus_t           *bus,
+    const char      *name,
+    device_class_t   class,
+    bool (*probe)   (device_t *dev),
+    bool (*bind)    (device_t *dev),
+    void (*remove)  (device_t *dev),
+    void (*suspend) (device_t *dev),
+    void (*resume)  (device_t *dev)
+);

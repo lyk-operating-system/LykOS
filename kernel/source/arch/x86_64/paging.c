@@ -22,6 +22,8 @@ struct arch_paging_map
     pte_t *pml4;
 };
 
+// Helpers
+
 static int translate_prot(int prot)
 {
     uint64_t pteprot = 0;
@@ -176,10 +178,24 @@ arch_paging_map_t *arch_paging_map_create()
     return map;
 }
 
+static void delete_level(pte_t *level, int depth)
+{
+    if (depth != 1)
+        for (size_t i = 0; i < 512; i++)
+        {
+            if (!(level[i] & PTE_PRESENT) || level[i] & PTE_HUGE)
+                continue;
+
+            delete_level((pte_t *)(PTE_ADDR_MASK(level[i]) + HHDM), depth - 1);
+        }
+
+    pm_free(pm_phys_to_page((uintptr_t)level - HHDM));
+}
+
 void arch_paging_map_destroy(arch_paging_map_t *map)
 {
+    delete_level(map->pml4, 4);
     heap_free(map);
-    // TODO: destroy page tables
 }
 
 // Map loading

@@ -16,7 +16,7 @@ sys_ret_t syscall_exit(int code)
     unreachable();
 }
 
-sys_ret_t syscall_tcb(void *ptr)
+sys_ret_t syscall_tcb_set(void *ptr)
 {
     arch_syscall_tcb_set(ptr);
 

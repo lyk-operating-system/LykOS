@@ -5,7 +5,6 @@
 
 #include "mm/vm.h"
 #include "proc/proc.h"
-#include "proc/sched.h"
 #include "proc/thread.h"
 
 // Helpers
@@ -32,7 +31,7 @@ sys_ret_t syscall_debug_log(const char *s);
 
 // IO
 
-sys_ret_t syscall_open(const char *path, int flags, int mode);
+sys_ret_t syscall_open(const char *path, int flags);
 sys_ret_t syscall_close(int fd);
 sys_ret_t syscall_read(int fd, void *buf, size_t count);
 sys_ret_t syscall_write(int fd, void *buf, size_t count);
@@ -45,4 +44,4 @@ sys_ret_t syscall_mmap(uintptr_t addr, size_t len, int prot, int flags, int fd, 
 // Process
 
 sys_ret_t syscall_exit(int code);
-sys_ret_t syscall_tcb(void *ptr);
+sys_ret_t syscall_tcb_set(void *ptr);

@@ -34,22 +34,35 @@
 #define O_DSYNC     0x08000
 #define O_RSYNC     0x10000
 
-sys_ret_t syscall_open(const char *path, int flags, int mode)
+sys_ret_t syscall_open(const char *path, int flags)
 {
-    char _path[1024];
-    vm_copy_from_user(sys_curr_as(), _path, (uintptr_t) path, 1024);
+    char kpath[1024];
+    vm_copy_from_user(sys_curr_as(), kpath, (uintptr_t)path, sizeof(kpath) - 1);
+    kpath[sizeof(kpath) - 1] = '\0';
 
-    // vnode_t *node;
-    // int ret = vfs_lookup(path, &node);
-    // if (ret != 0)
-    //     return (sys_ret_t) {0, ret};
+    vnode_t *vn;
+    int err = vfs_lookup(kpath, flags, &vn);
 
-    // return (sys_ret_t) {
-    //     resource_create(&proc->resource_table, node, 0, RESOURCE_READ | RESOURCE_WRITE),
-    //     EOK
-    // };
+    if (err != EOK)
+    {
+        if ((flags & O_CREAT) == 0)
+            return (sys_ret_t) {0, err};
 
-    return (sys_ret_t) {0, EOK};
+        // err = vfs_create(NULL, kpath, VREG, &vn);
+        if (err != EOK)
+            return (sys_ret_t) {0, err};
+    }
+
+    int fd;
+    if (!fd_alloc(&sys_curr_proc()->fd_table, vn, &fd))
+    {
+        vnode_unref(vn);
+        return (sys_ret_t){0, EMFILE};
+    }
+
+    // fd_alloc takes ownership of the vnode ref
+    vnode_unref(vn);
+    return (sys_ret_t) {fd, EOK};
 }
 
 sys_ret_t syscall_close(int fd)
