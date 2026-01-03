@@ -55,30 +55,31 @@ static vnode_t *create_path(vnode_t *root, const char *path, int is_dir)
     char *path_copy = strdup(path);
     char *saveptr;
     char *token = strtok_r(path_copy, "/", &saveptr);
-    vnode_t *current = root;
+    char current_path[PATH_MAX_NAME_LEN] = "";
+    vnode_t *current = NULL;
 
     while (token)
     {
         char *next_token = strtok_r(NULL, "/", &saveptr);
         int is_last = (next_token == NULL);
 
-        vnode_t *child = NULL;
-        if (current->ops->lookup(current, token, &child) != EOK || !child)
-        {
-            vnode_type_t type;
-            if (is_last && !is_dir)
-                type = VREG;
-            else
-                type = VDIR;
+        if (strcmp(current_path, "/") != 0)
+            strcat(current_path, "/");
+        strcat(current_path, token);
 
-            if(vfs_create(current, token, type, &child) != EOK)
+        vnode_type_t type;
+        if (is_last && !is_dir)
+            type = VREG;
+        else
+            type = VDIR;
+
+        if (vfs_lookup(current_path, &current) != EOK)
+            if (vfs_create(current_path, type, &current) != EOK)
             {
                 heap_free(path_copy);
                 return NULL;
             }
-        }
 
-        current = child;
         token = next_token;
     }
 

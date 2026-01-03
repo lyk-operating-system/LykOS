@@ -25,7 +25,7 @@ void kernel_main()
         if (strcmp(bootreq_module.response->modules[i]->path, "/initrd.tar") == 0)
         {
             vnode_t *root;
-            if (vfs_lookup("/", 0, &root) != EOK)
+            if (vfs_lookup("/", &root) != EOK)
             {
                 log(LOG_FATAL, "Root fs node doesnt exist");
             }
@@ -44,7 +44,7 @@ void kernel_main()
     ksym_init();
 
     vnode_t *test_module_file;
-    if (vfs_lookup("/boot/modules/test_module.o", 0, &test_module_file) == EOK
+    if (vfs_lookup("/boot/modules/test_module.o", &test_module_file) == EOK
     &&  test_module_file->type == VREG)
     {
         module_t *mod;
@@ -55,7 +55,7 @@ void kernel_main()
     // Load init process
 
     vnode_t *init_elf_file;
-    if (vfs_lookup("/boot/init", 0, &init_elf_file) == EOK
+    if (vfs_lookup("/boot/init", &init_elf_file) == EOK
     &&  test_module_file->type == VREG)
     {
         proc_t *init_proc = init_load(init_elf_file);

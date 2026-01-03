@@ -187,6 +187,35 @@ static int create(vnode_t *self, const char *name, vnode_type_t t, vnode_t **out
     return EOK;
 }
 
+static int ioctl(vnode_t *vn, uint64_t cmd, void *arg)
+{
+    return ENOTSUP;
+}
+
+static int remove(vnode_t *self, const char *name)
+{
+    ramfs_node_t *current = (ramfs_node_t *)self;
+    
+    FOREACH(n, current->children)
+    {
+        ramfs_node_t *child = LIST_GET_CONTAINER(n, ramfs_node_t, list_node);
+        if (strcmp(child->vn.name, name) == 0)
+        {
+            list_remove(&current->children, &child->list_node);
+            FOREACH(c, child->children)
+            {
+                ramfs_node_t *grandchild = LIST_GET_CONTAINER(c, ramfs_node_t, list_node);
+                remove(&child->vn, grandchild->vn.name);
+            }
+            heap_free(child->vn.name);
+            heap_free(child);
+            return EOK;
+        }
+    }
+    
+    return ENOENT;
+}
+
 //
 
 vfs_t *ramfs_create()

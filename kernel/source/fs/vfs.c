@@ -98,10 +98,8 @@ int vfs_write(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count, uint64
     return vn->ops->write(vn, buffer, offset, count, out_bytes_written);
 }
 
-int vfs_lookup(const char *path, int flags, vnode_t **out)
+int vfs_lookup(const char *path, vnode_t **out)
 {
-    (void)flags;
-
     vnode_t *curr;
     path = vfs_get_mountpoint(path, &curr);
     const char *comp;
@@ -123,9 +121,57 @@ int vfs_lookup(const char *path, int flags, vnode_t **out)
     return EOK;
 }
 
-int vfs_create(vnode_t *vn, const char *name, vnode_type_t type, vnode_t **out_vn)
+int vfs_create(const char *path, vnode_type_t type, vnode_t **out)
 {
-    return vn->ops->create(vn, name, type, out_vn);
+    const char *last_slash = strrchr(path, '/');
+    if (!last_slash)
+        return EINVAL;
+
+    char parent_path[PATH_MAX_NAME_LEN];
+    char child_name[VFS_MAX_NAME_LEN + 1];
+
+    size_t parent_len = last_slash - path ?: 1;
+    memcpy(parent_path, path, parent_len);
+    parent_path[parent_len] = '\0';
+
+    strcpy(child_name, last_slash + 1);
+
+    vnode_t *parent;
+    int ret = vfs_lookup(parent_path, &parent);
+    if (ret != EOK)
+        return ret;
+
+    return parent->ops->create(parent, child_name, type, out);
+}
+
+int vfs_remove(const char *path)
+{
+    const char *last_slash = strrchr(path, '/');
+    if (!last_slash)
+        return EINVAL;
+
+    char parent_path[PATH_MAX_NAME_LEN];
+    char child_name[VFS_MAX_NAME_LEN + 1];
+
+    size_t parent_len = last_slash - path ?: 1;
+    memcpy(parent_path, path, parent_len);
+    parent_path[parent_len] = '\0';
+
+    strcpy(child_name, last_slash + 1);
+
+    vnode_t *parent;
+    int ret = vfs_lookup(parent_path, &parent);
+    if (ret != EOK)
+        return ret;
+
+    return parent->ops->remove(parent, child_name);
+}
+
+int vfs_ioctl(vnode_t *vn, uint64_t cmd, void *arg)
+{
+    if (!vn->ops->ioctl)
+        return ENOTTY;
+    return vn->ops->ioctl(vn, cmd, arg);
 }
 
 void vfs_init()
@@ -142,5 +188,5 @@ void vfs_init()
         .children_cnt = 0
     };
 
-    log(LOG_DEBUG, "VFS initialized.");
+    log(LOG_INFO, "VFS initialized.");
 }
