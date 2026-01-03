@@ -7,6 +7,7 @@
 #include "uapi/errno.h"
 #include "utils/list.h"
 #include "utils/string.h"
+#include <stdbool.h>
 
 typedef struct trie_node trie_node_t;
 
@@ -136,7 +137,11 @@ int vfs_create(const char *path, vnode_type_t type, vnode_t **out)
     vnode_t *parent;
     int ret = vfs_lookup(parent_path, &parent);
     if (ret != EOK)
-        return ret;
+    {
+        ret = vfs_create(parent_path, VDIR, &parent);
+        if (ret != EOK)
+            return ret;
+    }
 
     return parent->ops->create(parent, child_name, type, out);
 }

@@ -36,4 +36,4 @@ typedef struct
 ustar_header_t;
 
 
-int ustar_extract(const void *archive, uint64_t archive_size, vnode_t *dest_vn);
+int ustar_extract(const void *archive, uint64_t archive_size, const char *dest_path);

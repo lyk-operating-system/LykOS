@@ -33,7 +33,7 @@ void kernel_main()
             ustar_extract(
                 bootreq_module.response->modules[i]->address,
                 bootreq_module.response->modules[i]->size,
-                root
+                "/"
             );
             break;
         }
