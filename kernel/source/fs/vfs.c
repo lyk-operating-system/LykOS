@@ -124,14 +124,11 @@ int vfs_lookup(const char *path, vnode_t **out)
 int vfs_create(const char *path, vnode_type_t type, vnode_t **out)
 {
     const char *last_slash = strrchr(path, '/');
-    if (!last_slash)
-        return EINVAL;
-
     char parent_path[PATH_MAX_NAME_LEN];
     char child_name[VFS_MAX_NAME_LEN + 1];
 
     size_t parent_len = last_slash - path ?: 1;
-    memcpy(parent_path, path, parent_len);
+    strncpy(parent_path, path, parent_len);
     parent_path[parent_len] = '\0';
 
     strcpy(child_name, last_slash + 1);
@@ -147,14 +144,11 @@ int vfs_create(const char *path, vnode_type_t type, vnode_t **out)
 int vfs_remove(const char *path)
 {
     const char *last_slash = strrchr(path, '/');
-    if (!last_slash)
-        return EINVAL;
-
     char parent_path[PATH_MAX_NAME_LEN];
     char child_name[VFS_MAX_NAME_LEN + 1];
 
     size_t parent_len = last_slash - path ?: 1;
-    memcpy(parent_path, path, parent_len);
+    strncpy(parent_path, path, parent_len);
     parent_path[parent_len] = '\0';
 
     strcpy(child_name, last_slash + 1);
