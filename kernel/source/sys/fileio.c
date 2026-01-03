@@ -41,7 +41,7 @@ sys_ret_t syscall_open(const char *path, int flags)
     kpath[sizeof(kpath) - 1] = '\0';
 
     vnode_t *vn;
-    int err = vfs_lookup(kpath, flags, &vn);
+    int err = vfs_lookup(kpath, &vn);
 
     if (err != EOK)
     {
