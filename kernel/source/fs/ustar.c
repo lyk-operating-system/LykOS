@@ -56,6 +56,7 @@ int ustar_extract(const void *archive, uint64_t archive_size, const char *dest_p
     vnode_t *dest_vn;
     if (vfs_lookup(dest_path, &dest_vn) != EOK)
         panic("USTAR: destination path not found");
+
     const uint8_t *data = (const uint8_t *)archive;
     uint64_t offset = 0;
 
@@ -132,5 +133,7 @@ int ustar_extract(const void *archive, uint64_t archive_size, const char *dest_p
         uint64_t blocks = (file_size + USTAR_BLOCK_SIZE - 1) / USTAR_BLOCK_SIZE;
         offset += blocks * USTAR_BLOCK_SIZE;
     }
+
+    log(LOG_INFO, "Loaded archive into filesystem");
     return EOK;
 }
