@@ -17,7 +17,7 @@ vm_addrspace_t *vm_kernel_as;
 
 // Helpers
 
-static bool check_collision(vm_addrspace_t *as, uintptr_t base, size_t length)
+static vm_segment_t *check_collision(vm_addrspace_t *as, uintptr_t base, size_t length)
 {
     uintptr_t end = base + length - 1;
 
@@ -28,10 +28,10 @@ static bool check_collision(vm_addrspace_t *as, uintptr_t base, size_t length)
         uintptr_t seg_end = seg->start + seg->length - 1;
 
         if (end >= seg_base && base <= seg_end)
-            return true;
+            return seg;
     }
 
-    return false;
+    return NULL;
 }
 
 static bool find_space(vm_addrspace_t *as, size_t length, uintptr_t *out)
@@ -80,6 +80,32 @@ static void insert_seg(vm_addrspace_t *as, vm_segment_t *seg)
         list_insert_after(&as->segments, pos, &seg->list_node);
     else
         list_prepend(&as->segments, &seg->list_node);
+}
+
+// Page fault handler
+
+static bool page_fault(vm_addrspace_t *as, uintptr_t virt)
+{
+    vm_segment_t *seg = check_collision(as, virt, 1);
+    if (!seg)
+        return false;
+
+    if (seg->vn)
+    {
+
+    }
+    else
+    {
+        page_t *page = pm_alloc(0);
+        if (!page)
+            return false;
+
+        uintptr_t phys = page->addr;
+        memset((void *)(phys + HHDM), 0, ARCH_PAGE_GRAN);
+        arch_paging_map_page(as->page_map, FLOOR(virt, ARCH_PAGE_GRAN), phys, ARCH_PAGE_GRAN, seg->prot);
+    }
+
+    return true;
 }
 
 // Mapping and unmapping

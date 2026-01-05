@@ -26,6 +26,7 @@ typedef struct
 {
     uintptr_t start;
     size_t length;
+    int prot;
 
     vnode_t *vn;
     uintptr_t offset;

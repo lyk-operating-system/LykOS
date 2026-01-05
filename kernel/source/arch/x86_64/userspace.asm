@@ -1,10 +1,10 @@
-global x86_64_thread_userspace_init
+global __x86_64_thread_userspace_init
 
 section .data
     x87cw  dw  (3<<8)|(1<<5)|(1<<4)|(1<<3)|(1<<2)|(1<<1)|(1<<0)
     mxcsr  dd  (1<<12)|(1<<11)|(1<<10)|(1<<9)|(1<<8)|(1<<7)
 
-x86_64_thread_userspace_init:
+__x86_64_thread_userspace_init:
     pop rcx ; sysret return address, basically program entry point
 
     cli

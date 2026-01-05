@@ -6,7 +6,7 @@
 #include "log.h"
 #include "panic.h"
 
-aarch64_gic_t *gic;
+aarch64_gic_t *aarch64_gic;
 
 extern aarch64_gic_t aarch64_gicv2;
 
@@ -16,8 +16,8 @@ void aarch64_gic_detect()
     if (!madt)
         panic("MADT not found!");
 
-    uint8_t *ptr = (uint8_t*)madt + sizeof(acpi_madt_t);
-    uint8_t *end = (uint8_t*)madt + madt->sdt.length;
+    uint8_t *ptr = (uint8_t *)madt + sizeof(acpi_madt_t);
+    uint8_t *end = (uint8_t *)madt + madt->sdt.length;
 
     uintptr_t gicc_base = 0;
     uintptr_t gicd_base = 0;
@@ -52,7 +52,6 @@ void aarch64_gic_detect()
     if (!gicc_base || !gicd_base)
         panic("No GICC or GICD found in MADT");
 
-    gic = &aarch64_gicv2;
-
-    gic->set_base(gicc_base + HHDM, gicd_base + HHDM);
+    aarch64_gic = &aarch64_gicv2;
+    aarch64_gic->set_base(gicc_base + HHDM, gicd_base + HHDM);
 }

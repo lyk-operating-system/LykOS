@@ -93,7 +93,7 @@ static gdt_entry_t g_gdt[] = {
     {}
 };
 
-void x86_64_gdt_load()
+void x86_64_gdt_init_cpu()
 {
     gdtr_t gdtr = (gdtr_t){
         .limit = sizeof(g_gdt) - 1,

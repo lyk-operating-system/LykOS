@@ -1,5 +1,5 @@
 #include "arch/thread.h"
-
+//
 #include "arch/lcpu.h"
 #include "arch/types.h"
 #include "arch/x86_64/abi/stack.h"
@@ -12,7 +12,6 @@
 
 typedef struct
 {
-#if defined(__x86_64__)
     uint64_t r15;
     uint64_t r14;
     uint64_t r13;
@@ -28,39 +27,6 @@ typedef struct
     uint64_t rcx;
     uint64_t rbx;
     uint64_t rax;
-#elif defined(__aarch64__)
-    uint64_t x30;
-    uint64_t x29;
-    uint64_t x28;
-    uint64_t x27;
-    uint64_t x26;
-    uint64_t x25;
-    uint64_t x24;
-    uint64_t x23;
-    uint64_t x22;
-    uint64_t x21;
-    uint64_t x20;
-    uint64_t x19;
-    uint64_t x18;
-    uint64_t x17;
-    uint64_t x16;
-    uint64_t x15;
-    uint64_t x14;
-    uint64_t x13;
-    uint64_t x12;
-    uint64_t x11;
-    uint64_t x10;
-    uint64_t x9;
-    uint64_t x8;
-    uint64_t x7;
-    uint64_t x6;
-    uint64_t x5;
-    uint64_t x4;
-    uint64_t x3;
-    uint64_t x2;
-    uint64_t x1;
-    uint64_t x0;
-#endif
     void (*userspace_init)();
     uintptr_t entry;
     uint64_t user_stack;
@@ -90,7 +56,7 @@ typedef struct
 __attribute__((packed))
 arch_thread_init_stack_kernel_t;
 
-extern void x86_64_thread_userspace_init();
+extern void __x86_64_thread_userspace_init();
 
 extern __attribute__((naked)) void __thread_context_switch(arch_thread_context_t *new, arch_thread_context_t *old);
 

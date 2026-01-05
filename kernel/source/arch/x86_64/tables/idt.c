@@ -34,7 +34,7 @@ idtr_t;
 __attribute__((aligned(0x10))) static idt_entry_t idt[256];
 extern uintptr_t __int_stub_table[256];
 
-void x86_64_idt_make()
+void x86_64_idt_init()
 {
     for (int i = 0; i < 256; i++)
     {
@@ -54,7 +54,7 @@ void x86_64_idt_make()
     log(LOG_INFO, "IDT generated.");
 }
 
-void x86_64_idt_load()
+void x86_64_idt_init_cpu()
 {
     idtr_t idtr = (idtr_t) {
         .limit = sizeof(idt) - 1,

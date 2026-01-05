@@ -1,7 +1,7 @@
-.global __arch64_int_setup
+.global __arch64_evt_load
 .extern __arch64_int_handler
 
-__arch64_int_setup:
+__arch64_evt_load:
     mov x0, sp
     mov x1, #1
     msr spsel, x1
@@ -36,7 +36,7 @@ int_stub:
     mrs x3, elr_el1
     mrs x4, spsr_el1
     mrs x5, far_el1
-    bl arch_int_handler
+    bl aarch64_int_handler
 
     ldp x0,  x1,  [sp], #16
     ldp x2,  x3,  [sp], #16

@@ -74,7 +74,7 @@ void x86_64_lapic_ipi(uint32_t lapic_id, uint32_t vec)
     lapic_write(REG_ICR0, vec);
 }
 
-void x86_64_lapic_init()
+void x86_64_lapic_init_cpu()
 {
     if (!arch_irq_reserve_local(IRQ))
         panic("Could not reserve IRQ %d for LAPIC!", IRQ);

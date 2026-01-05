@@ -36,9 +36,9 @@ void __entry()
     log(LOG_INFO, "Kernel compiled on %s at %s.", __DATE__, __TIME__);
 
     // Tables
-    x86_64_gdt_load();
-    x86_64_idt_make();
-    x86_64_idt_load();
+    x86_64_gdt_init_cpu();
+    x86_64_idt_init();
+    x86_64_idt_init_cpu();
 
     // FPU
     x86_64_fpu_init();

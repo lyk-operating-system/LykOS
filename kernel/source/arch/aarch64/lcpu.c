@@ -45,6 +45,6 @@ void arch_lcpu_thread_reg_write(size_t t)
 
 void arch_lcpu_init()
 {
-    aarch64_int_init();
-    gic->gicc_init();
+    aarch64_int_init_cpu();
+    aarch64_gic->gicc_init();
 }
