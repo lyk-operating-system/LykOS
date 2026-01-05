@@ -45,3 +45,11 @@ sys_ret_t syscall_mmap(uintptr_t addr, size_t len, int prot, int flags, int fd, 
 
 sys_ret_t syscall_exit(int code);
 sys_ret_t syscall_tcb_set(void *ptr);
+
+// Filesystem
+
+sys_ret_t syscall_getcwd(const char *path, size_t size);
+sys_ret_t syscall_chdir(const char *path);
+
+sys_ret_t syscall_mkdir(const char *path);
+sys_ret_t syscall_rmdir(const char *path);
