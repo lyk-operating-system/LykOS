@@ -35,15 +35,15 @@ To suggest an enhancement, open a new issue and choose the appropriate template.
 Code contributions are the most valuable form of contribution at this stage of development.
 
 To assist with this process, we have created the following documentation pages:
-- [Building the project](git.lyk-os.org/LykOS/wiki/Building-and-Running) (WIP)
+- [Building the project](https://git.lyk-os.org/LykOS/wiki/Building-and-Running) (WIP)
 - Navigating the codebase (WIP)
-- [Coding style](git.lyk-os.org/LykOS/wiki/Coding-Style) (WIP)
+- [Coding style](https://git.lyk-os.org/LykOS/wiki/Coding-Style) (WIP)
 
 ## Improving the Documentation
 
-The source code for our docs can be found: [here](git.lyk-os.org/docs).
+The source code for our docs can be found: [here](https://git.lyk-os.org/docs)
 
-The website is available: [here](docs.lyk-os.org).
+The website is available: [here](https://docs.lyk-os.org)
 
 ## Joining the Project Team
 
