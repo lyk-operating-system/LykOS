@@ -88,32 +88,42 @@ bool fd_alloc(fd_table_t *table, vnode_t *vnode, int *fd)
     if (new_capacity > MAX_FD_COUNT)
         new_capacity = MAX_FD_COUNT;
 
+    spinlock_release(&table->lock);
     // TODO: reallocate FD table properly!
-    panic("Cannot reallocate FD table for now!");
+    // panic("Cannot reallocate FD table for now!");
 
-    table->fds = heap_realloc(
+    fd_entry_t *new_fds = heap_realloc(
         table->fds,
         old_capacity * sizeof(fd_entry_t),
         new_capacity * sizeof(fd_entry_t)
     );
 
-    table->capacity = new_capacity;
+    if (!new_fds) return false;
 
     for (size_t i = old_capacity; i < new_capacity; i++)
     {
-        fd_entry_t *entry = &table->fds[i];
-
-        entry->vnode = NULL;
-        entry->offset = 0;
-        fd_init_ref(entry);
+        new_fds[i].vnode = NULL;
+        new_fds[i].offset = 0;
+        fd_init_ref(&new_fds[i]);
     }
 
-    fd_entry_t *entry = &table->fds[old_capacity];
+    spinlock_acquire(&table->lock);
 
+    if (table->capacity != old_capacity)
+    {
+        spinlock_release(&table->lock);
+        return fd_alloc(table, vnode, fd);
+    }
+
+    table->fds = new_fds;
+    table->capacity = new_capacity;
+
+    fd_entry_t *entry = &table->fds[old_capacity];
     entry->vnode = vnode;
-    vnode_ref(vnode);
     entry->offset = 0;
-    fd_ref(entry);
+    fd_init_ref(entry);
+    vnode_ref(vnode);
+
     *fd = (int)old_capacity;
     spinlock_release(&table->lock);
     return true;
