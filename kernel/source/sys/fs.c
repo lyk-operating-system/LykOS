@@ -7,8 +7,9 @@
 #include "uapi/errno.h"
 #include "utils/string.h"
 #include <stdint.h>
+#include "sys/stat.h"
 
-sys_ret_t syscall_getcwd(const char *path, size_t size)
+sys_ret_t syscall_getcwd(const char *buf, size_t size)
 {
     static volatile spinlock_t cwd_lock = SPINLOCK_INIT;
     spinlock_acquire(&cwd_lock);
@@ -20,8 +21,9 @@ sys_ret_t syscall_getcwd(const char *path, size_t size)
     {
         spinlock_release(&cwd_lock);
         return (sys_ret_t) {0, ERANGE};
+    }
 
-    size_t copied = vm_copy_to_user(sys_curr_as(), (uintptr_t)path, (void *)cwd, len);
+    size_t copied = vm_copy_to_user(sys_curr_as(), (uintptr_t)buf, (void *)cwd, len + 1);
     if (copied != len + 1)
     {
         spinlock_release(&cwd_lock);
@@ -32,13 +34,13 @@ sys_ret_t syscall_getcwd(const char *path, size_t size)
     return (sys_ret_t) {0, EOK};
 }
 
-sys_ret_t syscall_chdir(const char *path)
+sys_ret_t syscall_chdir(const char *buf)
 {
     static volatile spinlock_t cwd_lock = SPINLOCK_INIT;
     spinlock_acquire(&cwd_lock);
 
     char kpath[PATH_MAX_NAME_LEN];
-    size_t copied = vm_copy_from_user(sys_curr_as(), kpath, (uintptr_t)path, sizeof(kpath));
+    size_t copied = vm_copy_from_user(sys_curr_as(), kpath, (uintptr_t)buf, sizeof(kpath));
     if (copied == 0)
     {
         spinlock_release(&cwd_lock);
@@ -107,10 +109,10 @@ sys_ret_t syscall_chdir(const char *path)
 
 // ----
 
-sys_ret_t syscall_mkdir(const char *path)
+sys_ret_t syscall_mkdir(const char *buf)
 {
     char kpath[PATH_MAX_NAME_LEN];
-    size_t copied = vm_copy_from_user(sys_curr_as(), kpath, (uintptr_t)path, sizeof(kpath));
+    size_t copied = vm_copy_from_user(sys_curr_as(), kpath, (uintptr_t)buf, sizeof(kpath));
     if (copied == 0) return (sys_ret_t) {0, EFAULT};
 
     kpath[PATH_MAX_NAME_LEN - 1] = '\0';
@@ -122,10 +124,10 @@ sys_ret_t syscall_mkdir(const char *path)
     return (sys_ret_t) {0, EOK};
 }
 
-sys_ret_t syscall_rmdir(const char *path)
+sys_ret_t syscall_rmdir(const char *buf)
 {
     char kpath[PATH_MAX_NAME_LEN];
-    size_t copied = vm_copy_from_user(sys_curr_as(), kpath, (uintptr_t)path, sizeof(kpath));
+    size_t copied = vm_copy_from_user(sys_curr_as(), kpath, (uintptr_t)buf, sizeof(kpath));
     if (copied == 0) return (sys_ret_t) {0, EFAULT};
 
     kpath[PATH_MAX_NAME_LEN - 1] ='\0';
