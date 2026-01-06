@@ -8,8 +8,11 @@
 #include "mm/mm.h"
 #include "mm/pm.h"
 #include "panic.h"
+#include "sync/spinlock.h"
 #include "uapi/errno.h"
+#include "utils/list.h"
 #include "utils/math.h"
+#include <stdint.h>
 
 // Global data
 
@@ -260,6 +263,65 @@ void vm_addrspace_destroy(vm_addrspace_t *as)
 
     arch_paging_map_destroy(as->page_map);
     heap_free(as);
+}
+
+// Address space cloning
+
+vm_addrspace_t *vm_addrspace_clone(vm_addrspace_t *parent_as)
+{
+    vm_addrspace_t *child_as = vm_addrspace_create();
+
+    child_as->limit_low = parent_as->limit_low;
+    child_as->limit_high = parent_as->limit_high;
+
+    spinlock_acquire(&parent_as->slock);
+
+    list_node_t *node;
+    FOREACH(node, parent_as->segments)
+    {
+        vm_segment_t *parent_seg = LIST_GET_CONTAINER(node, vm_segment_t, list_node);
+
+        uintptr_t child_addr;
+        int flags = VM_MAP_PRIVATE | VM_MAP_FIXED;
+
+        if (parent_seg->vn == NULL)
+        {
+            flags |= VM_MAP_ANON;
+
+            vm_map_direct(child_as, parent_seg->start, parent_seg->length,
+                MM_PROT_WRITE | MM_PROT_EXEC,
+                flags, 0, &child_addr);
+        } else
+        {
+            vm_map_vnode(child_as, parent_seg->start, parent_seg->length,
+                MM_PROT_WRITE,
+                flags, parent_seg->vn, parent_seg->offset,
+                &child_addr
+                );
+        }
+
+        size_t copy_size = parent_seg->length;
+        void *temp = heap_alloc(copy_size);
+
+        if (temp)
+        {
+            size_t copied = vm_copy_from_user(parent_as, temp, parent_seg->start, copy_size);
+
+            if (copied == copy_size)
+            {
+                vm_copy_to_user(child_as, parent_seg->start, temp, copy_size);
+            }
+
+            heap_free(temp);
+        } else
+        {
+            // raise mem alloc error
+        }
+    }
+
+    spinlock_release(&parent_as->slock);
+
+    return child_as;
 }
 
 // Address space loading
