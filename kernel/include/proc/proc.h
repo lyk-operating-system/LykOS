@@ -22,7 +22,7 @@ typedef struct proc
     vm_addrspace_t *as;
     list_t threads;
 
-    fd_table_t fd_table;
+    fd_table_t *fd_table;
     const char *cwd;
 
     list_node_t proc_list_node;
@@ -31,4 +31,7 @@ typedef struct proc
 }
 proc_t;
 
+// Create and destroy
+
 proc_t *proc_create(const char *name, bool is_kernel);
+void proc_destroy(proc_t *proc);
