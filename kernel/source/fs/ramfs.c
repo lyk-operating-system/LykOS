@@ -42,7 +42,7 @@ static int write (vnode_t *self, const void *buf, uint64_t offset, uint64_t coun
 static int lookup(vnode_t *self, const char *name, vnode_t **out);
 static int create(vnode_t *self, const char *name, vnode_type_t t, vnode_t **out);
 static int remove(vnode_t *self, const char *name);
-static int readdir(vnode_t *self, vfs_dirent_t *entries, size_t max_entries, size_t *out_count);
+static int readdir(vnode_t *self, vfs_dirent_t **out_entries, size_t *out_count);
 
 vnode_ops_t ramfs_node_ops = {
     .read   = read,
@@ -215,37 +215,40 @@ static int remove(vnode_t *self, const char *name)
     return ENOENT;
 }
 
-static int readdir(vnode_t *self, vfs_dirent_t *entries, size_t max_entries, size_t *out_count)
+static int readdir(vnode_t *self, vfs_dirent_t **out_entries, size_t *out_count)
 {
-    if (!out_count)
-        return EINVAL;
-    if (max_entries > 0 && !entries)
+    if (!out_entries || !out_count)
         return EINVAL;
     if (self->type != VDIR)
         return ENOTDIR;
 
     ramfs_node_t *dir = (ramfs_node_t *)self;
-
-    size_t required = 0;
+    size_t entry_count = 0;
     FOREACH(n, dir->children)
-        required++;
+        entry_count++;
 
-    if (max_entries < required)
+    if (!entry_count)
     {
-        *out_count = required;
-        return ENOBUFS;
+        *out_entries = NULL;
+        *out_count = 0;
+        self->atime = arch_clock_get_unix_time();
+        return EOK;
     }
-
-    size_t i = 0;
+    
+    vfs_dirent_t *entries = heap_alloc(entry_count * sizeof(vfs_dirent_t));    
+    size_t index = 0;
+    
     FOREACH(n, dir->children)
     {
         ramfs_node_t *child = LIST_GET_CONTAINER(n, ramfs_node_t, list_node);
-        strcpy(entries[i].name, child->vn.name);
-        entries[i++].type = child->vn.type;
+        strcpy(entries[index].name, child->vn.name);
+        entries[index].type = child->vn.type;
+        index++;
     }
-
-    *out_count = required;
+    
     self->atime = arch_clock_get_unix_time();
+    *out_entries = entries;
+    *out_count = entry_count;
     return EOK;
 }
 

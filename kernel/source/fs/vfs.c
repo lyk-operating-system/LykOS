@@ -82,23 +82,23 @@ static char *vfs_get_mountpoint(const char *path, vnode_t **out)
  * Veneer layer.
  */
 
-int vfs_read(vnode_t *vn, void *buf, uint64_t offset, uint64_t count, uint64_t *out_bytes_read)
+int vfs_read(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count, uint64_t *out_bytes_read)
 {
-    if (!vn || !buf)
+    if (!vn || !buffer)
         return EINVAL;
 
-    return vn->ops->read(vn, buf, offset, count, out_bytes_read);
+    return vn->ops->read(vn, buffer, offset, count, out_bytes_read);
 }
 
-int vfs_write(vnode_t *vn, void *buf, uint64_t offset, uint64_t count, uint64_t *out_bytes_written)
+int vfs_write(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count, uint64_t *out_bytes_written)
 {
-    if (!vn || !buf)
+    if (!vn || !buffer)
         return EINVAL;
 
-    return vn->ops->write(vn, buf, offset, count, out_bytes_written);
+    return vn->ops->write(vn, buffer, offset, count, out_bytes_written);
 }
 
-int vfs_lookup(const char *path, vnode_t **out)
+int vfs_lookup(const char *path, vnode_t **out_vn)
 {
     vnode_t *curr;
     path = vfs_get_mountpoint(path, &curr);
@@ -117,7 +117,7 @@ int vfs_lookup(const char *path, vnode_t **out)
         path = comp + comp_len;
     }
 
-    *out = curr;
+    *out_vn = curr;
     return EOK;
 }
 

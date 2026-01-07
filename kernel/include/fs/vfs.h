@@ -106,14 +106,14 @@ static inline bool vnode_unref(vnode_t *vn)
 
 struct vnode_ops
 {
-    int (*read)   (vnode_t *vn, void *buf, uint64_t len, uint64_t offset, uint64_t *bytes_read);
-    int (*write)  (vnode_t *vn, const void *buf, uint64_t len, uint64_t offset, uint64_t *bytes_written);
+    int (*read)   (vnode_t *vn, void *buffer, uint64_t offset, uint64_t count, uint64_t *out_bytes_read);
+    int (*write)  (vnode_t *vn, const void *buffer, uint64_t offset, uint64_t count, uint64_t *out_bytes_written);
     int (*lookup) (vnode_t *vn, const char *name, vnode_t **out_vn);
     int (*create) (vnode_t *vn, const char *name, vnode_type_t type, vnode_t **out_vn);
     int (*remove) (vnode_t *vn, const char *name);
     int (*mkdir)  (vnode_t *vn, const char *name, vnode_t **out_vn);
     int (*rmdir)  (vnode_t *vn, const char *name);
-    int (*readdir)(vnode_t *vn, vfs_dirent_t *entries, size_t max_entries, size_t *out_count);
+    int (*readdir)(vnode_t *vn, vfs_dirent_t **out_entries, size_t *out_count);
     int (*ioctl)  (vnode_t *vn, uint64_t cmd, void *arg);
 };
 
@@ -121,9 +121,9 @@ struct vnode_ops
  * Veneer layer.
 */
 
-[[nodiscard]] int vfs_read(vnode_t *vn, void *buf, uint64_t offset, uint64_t count, uint64_t *out_bytes_read);
-[[nodiscard]] int vfs_write(vnode_t *vn, void *buf, uint64_t offset, uint64_t count, uint64_t *out_bytes_written);
-[[nodiscard]] int vfs_lookup(const char *path, vnode_t **out);
+[[nodiscard]] int vfs_read(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count, uint64_t *out_bytes_read);
+[[nodiscard]] int vfs_write(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count, uint64_t *out_bytes_written);
+[[nodiscard]] int vfs_lookup(const char *path, vnode_t **out_vn);
 [[nodiscard]] int vfs_create(const char *path, vnode_type_t type, vnode_t **out_vn);
 [[nodiscard]] int vfs_remove(const char *path);
 [[nodiscard]] int vfs_ioctl(vnode_t *vn, uint64_t cmd, void *arg);
