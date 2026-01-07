@@ -223,9 +223,7 @@ static int readdir(vnode_t *self, vfs_dirent_t **out_entries, size_t *out_count)
         return ENOTDIR;
 
     ramfs_node_t *dir = (ramfs_node_t *)self;
-    size_t entry_count = 0;
-    FOREACH(n, dir->children)
-        entry_count++;
+    size_t entry_count = dir->children.length;
 
     if (!entry_count)
     {
