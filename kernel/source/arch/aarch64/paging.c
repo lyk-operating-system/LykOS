@@ -51,9 +51,9 @@ int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t padd
     pte_t *l2;
     pte_t *l3;
 
-    uint64_t _prot = translate_prot(prot);
+    pte_t _prot = translate_prot(prot);
 
-    // L0 → L1
+    // L0 -> L1
     if (l0[l0e] & PTE_VALID)
         l1 = (pte_t *)(PTE_ADDR_MASK(l0[l0e]) + HHDM);
     else
@@ -61,17 +61,17 @@ int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t padd
         uintptr_t phys = pm_alloc(0)->addr;
         l1 = (pte_t *)(phys + HHDM);
         memset(l1, 0, 0x1000);
-        l0[l0e] = phys | PTE_VALID | PTE_TABLE;
+        l0[l0e] = phys | PTE_VALID | PTE_TABLE | PTE_ACCESS;
     }
 
     // 1 GiB block
     if (size == 1 * GIB)
     {
-        l1[l1e] = paddr | PTE_VALID | _prot;
+        l1[l1e] = paddr | PTE_VALID | PTE_ACCESS | _prot;
         return 0;
     }
 
-    // L1 → L2
+    // L1 -> L2
     if (l1[l1e] & PTE_VALID)
         l2 = (pte_t *)(PTE_ADDR_MASK(l1[l1e]) + HHDM);
     else
@@ -79,17 +79,17 @@ int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t padd
         uintptr_t phys = pm_alloc(0)->addr;
         l2 = (pte_t *)(phys + HHDM);
         memset(l2, 0, 0x1000);
-        l1[l1e] = phys | PTE_VALID | PTE_TABLE;
+        l1[l1e] = phys | PTE_VALID | PTE_TABLE | PTE_ACCESS;
     }
 
     // 2 MiB block
     if (size == 2 * MIB)
     {
-        l2[l2e] = paddr | PTE_VALID | _prot;
+        l2[l2e] = paddr | PTE_VALID | PTE_ACCESS | _prot;
         return 0;
     }
 
-    // L2 → L3
+    // L2 -> L3
     if (l2[l2e] & PTE_VALID)
         l3 = (pte_t *)(PTE_ADDR_MASK(l2[l2e]) + HHDM);
     else
@@ -97,7 +97,7 @@ int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t padd
         uintptr_t phys = pm_alloc(0)->addr;
         l3 = (pte_t *)(phys + HHDM);
         memset(l3, 0, 0x1000);
-        l2[l2e] = phys | PTE_VALID | PTE_TABLE;
+        l2[l2e] = phys | PTE_VALID | PTE_TABLE | PTE_ACCESS;
     }
 
     // 4 KiB page

@@ -14,7 +14,7 @@ add_languages('nasm')
 
 executable(
     'init',
-    'init.asm',
+    'init.c',
     install: true,
     install_dir: 'bin',
 )

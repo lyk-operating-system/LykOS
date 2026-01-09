@@ -59,11 +59,11 @@ int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t padd
 
     pte_t *pml4 = map->pml4, *pml3, *pml2, *pml1;
 
-    prot = translate_prot(prot);
+    pte_t _prot = translate_prot(prot);
     bool hh = vaddr >= HHDM; // Is higher half?
 
     // User perms must be set only in lower half.
-    ASSERT(hh ? !(prot & PTE_USER) : (prot & PTE_USER))
+    ASSERT(hh ? !(_prot & PTE_USER) : (_prot & PTE_USER))
 
     // PML4 -> PML3
     if (pml4[pml4e] & PTE_PRESENT)
@@ -79,7 +79,7 @@ int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t padd
     // 1 GiB page
     if (size == 1 * GIB)
     {
-        pml3[pml3e] = paddr | prot | PTE_PRESENT | PTE_HUGE | hh_leaf_flags(hh);
+        pml3[pml3e] = paddr | _prot | PTE_PRESENT | PTE_HUGE | hh_leaf_flags(hh);
         return 0;
     }
 
@@ -97,7 +97,7 @@ int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t padd
     // 2 MiB page
     if (size == 2 * MIB)
     {
-        pml2[pml2e] = paddr | prot | PTE_PRESENT | PTE_HUGE | hh_leaf_flags(hh);
+        pml2[pml2e] = paddr | _prot | PTE_PRESENT | PTE_HUGE | hh_leaf_flags(hh);
         return 0;
     }
 
@@ -113,7 +113,7 @@ int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t padd
     }
 
     // 4 KiB page
-    pml1[pml1e] = paddr | prot | PTE_PRESENT | hh_leaf_flags(hh);
+    pml1[pml1e] = paddr | _prot | PTE_PRESENT | hh_leaf_flags(hh);
     return 0;
 }
 

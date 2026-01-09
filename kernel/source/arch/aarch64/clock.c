@@ -5,6 +5,7 @@
 bool arch_clock_get_snapshot(arch_clock_snapshot_t *out)
 {
     (void)out;
+    return false;
 }
 
 uint64_t arch_clock_get_unix_time()

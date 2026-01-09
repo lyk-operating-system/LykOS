@@ -26,6 +26,7 @@ typedef struct
 {
     uintptr_t start;
     size_t length;
+    int prot;
 
     int prot;
     int flags;

@@ -41,7 +41,7 @@ To assist with this process, we have created the following documentation pages:
 
 ## Improving the Documentation
 
-The source code for our docs can be found: [here](https://git.lyk-os.org/docs).
+The source code for our docs can be found: [here](https://git.lyk-os.org/docs)
 
 The website is available: [here](https://docs.lyk-os.org)
 

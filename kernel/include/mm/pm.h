@@ -3,6 +3,7 @@
 #include "arch/types.h"
 #include "utils/list.h"
 #include <stdatomic.h>
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
 

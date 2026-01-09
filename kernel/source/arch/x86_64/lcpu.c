@@ -52,9 +52,9 @@ void arch_lcpu_thread_reg_write(size_t t)
 void arch_lcpu_init()
 {
     vm_addrspace_load(vm_kernel_as);
-    x86_64_gdt_load();
-    x86_64_idt_load();
-    x86_64_lapic_init();
+    x86_64_gdt_init_cpu();
+    x86_64_idt_init_cpu();
+    x86_64_lapic_init_cpu();
     x86_64_fpu_init_cpu();
-    x86_64_syscall_init();
+    x86_64_syscall_init_cpu();
 }

@@ -1,77 +1,85 @@
 // API
 #include "arch/timer.h"
 //
+#include <arch/aarch64/devices/gic.h>
 #include <stdint.h>
 
 // Helpers
 
-static inline uint64_t arch_timer_get_cntfrq()
+static inline uint64_t read_cntfrq()
 {
     uint64_t v;
     asm volatile("mrs %0, cntfrq_el0" : "=r"(v));
     return v;
 }
 
-static inline uint64_t arch_timer_read_cntvct()
+static inline uint64_t read_cntvct()
 {
     uint64_t v;
-    asm volatile("isb");
     asm volatile("mrs %0, cntvct_el0" : "=r"(v));
     return v;
 }
 
-static inline void arch_timer_write_cntv_cval(uint64_t v)
-{
-    asm volatile("msr cntv_cval_el0, %0" :: "r"(v));
-    asm volatile("isb");
-}
-
-static inline void arch_timer_write_cntv_ctl(uint64_t v)
+static inline void write_cntv_ctl(uint64_t v)
 {
     asm volatile("msr cntv_ctl_el0, %0" :: "r"(v));
     asm volatile("isb");
 }
 
+static inline void write_cntv_tval(uint64_t v)
+{
+    asm volatile("msr cntv_tval_el0, %0" :: "r"(v));
+    asm volatile("isb");
+}
+
 // timer.h API
 
-void arch_timer_stop(void)
+void arch_timer_stop()
 {
     // ENABLE=0, IMASK=1
-    arch_timer_write_cntv_ctl(2);
+    write_cntv_ctl(2);
 }
 
 void arch_timer_oneshot(size_t us)
 {
     arch_timer_stop();
 
-    uint64_t freq = arch_timer_get_cntfrq();
-    uint64_t ticks = freq * us / 1000000;
-    if (us && ticks == 0)
+    uint64_t freq = read_cntfrq();
+    uint64_t ticks = (freq * us) / 1'000'000ull;
+    if (us != 0 && ticks == 0)
         ticks = 1;
 
-    uint64_t now = arch_timer_read_cntvct();
-    arch_timer_write_cntv_cval(now + ticks);
+    write_cntv_tval(ticks);
 
     // ENABLE=1, IMASK=0
-    arch_timer_write_cntv_ctl(1);
+    write_cntv_ctl(1);
 }
 
-size_t arch_timer_get_local_irq(void)
+size_t arch_timer_get_local_irq()
 {
-    return 28;
+    return 27;
 }
 
-uint64_t arch_timer_get_uptime_ns(void)
+uint64_t arch_timer_get_uptime_ns()
 {
-    uint64_t cnt = arch_timer_read_cntvct();
-    uint64_t freq = arch_timer_get_cntfrq();
+    uint64_t cnt = read_cntvct();
+    uint64_t freq = read_cntfrq();
 
-    return (cnt * 1000000000ULL) / freq;
+    return (cnt * 1'000'000'000ull) / freq;
 }
 
 // Initialization
 
-void aarch64_timer_init()
+void aarch64_timer_init_cpu()
 {
+    // Enable Read-Only access to the virtual counter for EL0 (User) without trapping to EL1.
+    // This is important for performance reasons as it skips the need for a system call.
+    uint64_t cntkctl;
+    asm volatile("mrs %0, cntkctl_el1" : "=r"(cntkctl));
+    cntkctl |= (1 << 1); // EL1VCTEN
+    asm volatile("msr cntkctl_el1, %0" :: "r"(cntkctl));
+    asm volatile("isb");
 
+    arch_timer_stop();
+    aarch64_gic->enable_int(27);
 }

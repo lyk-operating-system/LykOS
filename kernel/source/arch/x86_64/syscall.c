@@ -1,11 +1,10 @@
 #include "arch/x86_64/syscall.h"
 #include "arch/x86_64/msr.h"
 #include "arch/x86_64/tables/gdt.h"
-#include "log.h"
 
 extern void x86_64_arch_syscall_entry();
 
-void x86_64_syscall_init()
+void x86_64_syscall_init_cpu()
 {
     // Enable SYSCALL/SYSRET by setting SCE (System Call Extensions) bit.
     x86_64_msr_write(X86_64_MSR_EFER, x86_64_msr_read(X86_64_MSR_EFER) | 1);

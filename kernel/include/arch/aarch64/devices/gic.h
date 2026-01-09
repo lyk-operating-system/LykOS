@@ -13,16 +13,16 @@ typedef struct
     void (*gicc_init)();
     void (*gicd_init)();
 
-    void (*enable_irq)(uint32_t intid);
-    void (*disable_irq)(uint32_t intid);
+    void (*enable_int)(uint32_t intid);
+    void (*disable_int)(uint32_t intid);
 
     void (*set_target)(uint32_t intid, uint32_t cpu);
 
-    uint32_t (*ack_irq)();
-    void (*eoi_irq)(uint32_t iar);
+    uint32_t (*ack_int)();
+    void (*end_of_int)(uint32_t iar);
 }
 aarch64_gic_t;
 
-extern aarch64_gic_t *gic;
+extern aarch64_gic_t * aarch64_gic;
 
 void aarch64_gic_detect();

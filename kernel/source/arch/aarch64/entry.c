@@ -31,7 +31,7 @@ void __entry()
     log(LOG_INFO, "Kernel compiled on %s at %s.", __DATE__, __TIME__);
 
     // EVT
-    aarch64_int_init();
+    aarch64_int_init_cpu();
 
     // Memory
     pm_init();
@@ -43,8 +43,11 @@ void __entry()
 
     // GIC
     aarch64_gic_detect(); // This needs ACPI
-    gic->gicd_init();
-    gic->gicc_init();
+    aarch64_gic->gicd_init();
+
+    // Also initialize CPU specific code for the bootstrap CPU.
+    // This step is going to be done again during SMP initialization.
+    arch_lcpu_init();
 
     kernel_main();
 }

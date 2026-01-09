@@ -18,9 +18,17 @@ void arch_timer_stop();
 void arch_timer_oneshot(size_t us);
 
 /**
- * @brief Program a one-shot timer for the current CPU.
+ * @brief Registers a callback handler for the architectural timer interrupt.
  *
- * @return local_irq Interrupt number targeting the current CPU.
+ * This function should be used to trigger the scheduler preemption logic.
+ *
+ * @param handler A pointer to the function to be called on timer expiry.
  */
-size_t arch_timer_get_local_irq();
+void arch_timer_set_handler(void *handler());
+
+/**
+ * @brief Get system uptime in nanoseconds.
+ *
+ * @return Uptime in nanoseconds.
+ */
 uint64_t arch_timer_get_uptime_ns();
