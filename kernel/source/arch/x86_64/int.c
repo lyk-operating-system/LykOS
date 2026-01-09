@@ -1,7 +1,7 @@
-// API.h
+// API
 #include "arch/irq.h"
 //
-#include "arch/aarch64/devices/gic.h"
+#include "arch/x86_64/devices/lapic.h"
 #include "arch/lcpu.h"
 #include "log.h"
 #include "panic.h"
@@ -18,9 +18,7 @@ typedef struct
 }
 irq_desc_t;
 
-#define MAX_IRQ 1020
-
-static irq_desc_t irqs[MAX_IRQ];
+static irq_desc_t irqs[32][64]; // Maximum of 32 CPUs with 64 allocatable IRQs each.
 static spinlock_t slock = SPINLOCK_INIT;
 
 bool arch_irq_alloc(
@@ -39,7 +37,7 @@ bool arch_irq_alloc(
         if (desc->used)
             continue;
 
-        *desc = (irq_desc_t){
+        *desc = (irq_desc_t) {
             .used = true,
             .handler = handler,
             .context = context,
@@ -66,27 +64,24 @@ void arch_irq_free(uint32_t irq)
     spinlock_acquire(&slock);
 
     irqs[irq].used = false;
-    // It doesn't hurt to disable the IRQ.
-    aarch64_gic->disable_int(irq);
-    // aarch64_gic->clear_pending(irq);
 
     spinlock_release(&slock);
 }
 
 void arch_irq_enable(uint32_t irq)
 {
-    aarch64_gic->enable_int(irq);
+
 }
 
 void arch_irq_disable(uint32_t irq)
 {
-    aarch64_gic->disable_int(irq);
+
 }
 
 void arch_irq_dispatch(uint32_t irq)
 {
     spinlock_acquire(&slock);
-    irq_desc_t desc = irqs[irq];
+    irq_desc_t desc = irqs[irq / 64][irq % 64];
     spinlock_release(&slock);
 
     if (!desc.used)
@@ -99,72 +94,25 @@ void arch_irq_dispatch(uint32_t irq)
 
 typedef struct
 {
-    uint64_t x[31];
+    uint64_t r15, r14, r13, r12, r11, r10, r9, r8;
+    uint64_t rdi, rsi, rbp, rdx, rcx, rbx, rax;
+    uint64_t int_no;
+    uint64_t err_code, rip, cs, rflags, rsp, ss;
 }
 __attribute__((packed))
 cpu_state_t;
 
-void aarch64_int_handler(
-    const uint64_t source,
-    cpu_state_t const *cpu_state,
-    const uint64_t esr, const uint64_t elr,
-    const uint64_t spsr, const uint64_t far
-)
+void arch_int_handler(cpu_state_t *cpu_state)
 {
-    (void)cpu_state;
-
-    switch (source)
+    if (cpu_state->int_no < 32)
     {
-        // Synchronous
-        case 0:
-        case 4:
-        {
-            log(
-                LOG_FATAL,
-                "SYNC exception ESR=%lx ELR=%lx FAR=%lx SPSR=%lx",
-                esr, elr, far, spsr
-            );
-            panic("sync");
-        }
-
-        // IRQ
-        case 1: // current EL
-        case 5: // lower EL
-        {
-            uint32_t iar = aarch64_gic->ack_int();
-            uint32_t intid = iar & 0x3ff;
-
-            if (intid < 1020)
-                arch_irq_dispatch(intid);
-
-            aarch64_gic->end_of_int(iar);
-            return;
-        }
-
-        // FIQ
-        case 2:
-        case 6:
-            panic("FIQ");
-
-        // SError
-        case 3:
-        case 7:
-            panic("SError");
-
-        default:
-            panic("EVT ");
+        log(LOG_INFO, "CPU EXCEPTION: %llx %#llx", cpu_state->int_no, cpu_state->err_code);
+        arch_lcpu_halt();
     }
-}
+    else
+    {
+        arch_irq_dispatch(cpu_state->int_no);
+    }
 
-// Initialization
-
-extern void __arch64_evt_load();
-
-void aarch64_int_init_cpu()
-{
-    arch_lcpu_int_mask();
-    __arch64_evt_load();
-    arch_lcpu_int_unmask();
-
-    log(LOG_DEBUG, "Initialized interrupts.");
+    x86_64_lapic_send_eoi();
 }
