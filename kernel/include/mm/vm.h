@@ -27,6 +27,9 @@ typedef struct
     uintptr_t start;
     size_t length;
 
+    int prot;
+    int flags;
+
     vnode_t *vn;
     uintptr_t offset;
 

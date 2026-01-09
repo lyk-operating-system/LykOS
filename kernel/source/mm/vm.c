@@ -131,6 +131,8 @@ int vm_map_vnode(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
     *seg = (vm_segment_t) {
         .start = vaddr,
         .length = length,
+        .prot = prot,
+        .flags = flags,
         .offset = offset
     };
     insert_seg(as, seg);
@@ -276,47 +278,27 @@ vm_addrspace_t *vm_addrspace_clone(vm_addrspace_t *parent_as)
 
     spinlock_acquire(&parent_as->slock);
 
-    list_node_t *node;
     FOREACH(node, parent_as->segments)
     {
         vm_segment_t *parent_seg = LIST_GET_CONTAINER(node, vm_segment_t, list_node);
 
         uintptr_t child_addr;
-        int flags = VM_MAP_PRIVATE | VM_MAP_FIXED;
-
-        if (parent_seg->vn == NULL)
-        {
-            flags |= VM_MAP_ANON;
-
-            vm_map_direct(child_as, parent_seg->start, parent_seg->length,
-                MM_PROT_WRITE | MM_PROT_EXEC,
-                flags, 0, &child_addr);
-        } else
-        {
-            vm_map_vnode(child_as, parent_seg->start, parent_seg->length,
-                MM_PROT_WRITE,
-                flags, parent_seg->vn, parent_seg->offset,
+        vm_map_vnode(child_as, parent_seg->start, parent_seg->length,
+                parent_seg->prot,
+                parent_seg->flags, parent_seg->vn, parent_seg->offset,
                 &child_addr
                 );
-        }
 
         size_t copy_size = parent_seg->length;
         void *temp = heap_alloc(copy_size);
+        if (!temp) return NULL;
 
-        if (temp)
-        {
-            size_t copied = vm_copy_from_user(parent_as, temp, parent_seg->start, copy_size);
+        size_t copied = vm_copy_from_user(parent_as, temp, parent_seg->start, copy_size);
 
-            if (copied == copy_size)
-            {
-                vm_copy_to_user(child_as, parent_seg->start, temp, copy_size);
-            }
+        if (copied == copy_size)
+            vm_copy_to_user(child_as, parent_seg->start, temp, copy_size);
 
-            heap_free(temp);
-        } else
-        {
-            // raise mem alloc error
-        }
+        heap_free(temp);
     }
 
     spinlock_release(&parent_as->slock);
