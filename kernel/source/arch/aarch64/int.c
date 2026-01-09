@@ -39,7 +39,7 @@ bool arch_irq_alloc(
         if (desc->used)
             continue;
 
-        *desc = (irq_desc_t){
+        *desc = (irq_desc_t) {
             .used = true,
             .handler = handler,
             .context = context,
@@ -90,7 +90,7 @@ void arch_irq_dispatch(uint32_t irq)
     spinlock_release(&slock);
 
     if (!desc.used)
-        panic("Unused IRQ was dispatched");
+        panic("Unused IRQ was dispatched!");
 
     desc.handler(irq, desc.context);
 }

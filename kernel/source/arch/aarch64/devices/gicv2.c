@@ -24,6 +24,7 @@ static uintptr_t gicd_base;
 #define GICD_IPRIORITYR(n) (gicd_base + 0x400 + (uint64_t)(n) * 4) // Interrupt priority
 #define GICD_ITARGETSR(n)  (gicd_base + 0x800 + (uint64_t)(n) * 4) // Target CPU mask - valid only for SPIs
 #define GICD_ICFGR(n)      (gicd_base + 0xC00 + (uint64_t)(n) * 4) // Interrupt config
+#define GICD_SGIR          (gicd_base + 0xF00)
 
 // Helpers
 

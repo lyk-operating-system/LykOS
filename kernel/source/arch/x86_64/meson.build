@@ -12,6 +12,7 @@ c_files += files(
     'cpuid.c',
     'entry.c',
     'fpu.c',
+    'int.c',
     'ioport.c',
     'lcpu.c',
     'msr.c',

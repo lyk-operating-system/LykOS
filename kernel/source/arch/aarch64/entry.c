@@ -44,7 +44,10 @@ void __entry()
     // GIC
     aarch64_gic_detect(); // This needs ACPI
     aarch64_gic->gicd_init();
-    aarch64_gic->gicc_init();
+
+    // Also initialize CPU specific code for the bootstrap CPU.
+    // This step is going to be done again during SMP initialization.
+    arch_lcpu_init();
 
     kernel_main();
 }

@@ -60,12 +60,7 @@ g_irq_redirection_table[16] = {
 };
 
 static uintptr_t ioapic_base = 0;
-
-#define MAX_IRQS 24
-
-static size_t     global_irq_count;
-static bool       global_irq_used[MAX_IRQS];
-static spinlock_t slock;
+static size_t global_irq_count;
 
 // Helpers
 
@@ -168,75 +163,5 @@ void x86_64_ioapic_map_legacy_irq(uint8_t irq, uint8_t lapic_id, bool fallback_l
         irq = g_irq_redirection_table[irq].dest;
     }
 
-    if (arch_irq_reserve_global(irq))
-        x86_64_ioapic_map_gsi(irq, lapic_id, fallback_low_polarity, fallback_trigger_mode, vector);
-    else
-        panic("Could not reserve global irq %d for legacy mapping!", irq);
-}
-
-// irq.h API
-
-bool arch_irq_reserve_global(size_t global_irq)
-{
-    if (global_irq >= global_irq_count)
-        return false;
-
-    spinlock_acquire(&slock);
-
-    if (global_irq_used[global_irq])
-    {
-        spinlock_release(&slock);
-        return false;
-    }
-
-    global_irq_used[global_irq] = true;
-    spinlock_release(&slock);
-    return true;
-}
-
-bool arch_irq_alloc_global(size_t *out)
-{
-    spinlock_acquire(&slock);
-
-    for (size_t i = 0; i < global_irq_count; i++)
-    {
-        if (!global_irq_used[i])
-        {
-            global_irq_used[i] = true;
-            *out = i;
-            spinlock_release(&slock);
-            return true;
-        }
-    }
-
-    spinlock_release(&slock);
-    return false;
-}
-
-void arch_irq_free_global(size_t global_irq)
-{
-    spinlock_acquire(&slock);
-
-    global_irq_used[global_irq] = false;
-
-    spinlock_release(&slock);
-}
-
-bool arch_irq_route(size_t global_irq, size_t target_cpu, size_t local_irq)
-{
-    if (global_irq >= global_irq_count)
-        return false;
-
-    bool polarity = false;
-    bool trigger  = false;
-
-    x86_64_ioapic_map_gsi(
-        (uint8_t)global_irq,
-        (uint8_t)target_cpu,
-        polarity,
-        trigger,
-        (uint8_t)local_irq + 32 // IRQ 0 -> vector 32
-    );
-
-    return true;
+    x86_64_ioapic_map_gsi(irq, lapic_id, fallback_low_polarity, fallback_trigger_mode, vector);
 }

@@ -2,6 +2,7 @@
 #include "arch/lcpu.h"
 //
 #include "arch/aarch64/devices/gic.h"
+#include "arch/aarch64/devices/timer.h"
 #include "arch/aarch64/int.h"
 
 void arch_lcpu_halt()
@@ -47,4 +48,5 @@ void arch_lcpu_init()
 {
     aarch64_int_init_cpu();
     aarch64_gic->gicc_init();
+    aarch64_timer_init_cpu();
 }

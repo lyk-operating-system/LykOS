@@ -1,6 +1,7 @@
 // API
 #include "arch/timer.h"
 //
+#include <arch/aarch64/devices/gic.h>
 #include <stdint.h>
 
 // Helpers
@@ -56,7 +57,7 @@ void arch_timer_oneshot(size_t us)
 
 size_t arch_timer_get_local_irq()
 {
-    return 28;
+    return 27;
 }
 
 uint64_t arch_timer_get_uptime_ns()
@@ -69,12 +70,16 @@ uint64_t arch_timer_get_uptime_ns()
 
 // Initialization
 
-void aarch64_timer_init()
-{
-
-}
-
 void aarch64_timer_init_cpu()
 {
+    // Enable Read-Only access to the virtual counter for EL0 (User) without trapping to EL1.
+    // This is important for performance reasons as it skips the need for a system call.
+    uint64_t cntkctl;
+    asm volatile("mrs %0, cntkctl_el1" : "=r"(cntkctl));
+    cntkctl |= (1 << 1); // EL1VCTEN
+    asm volatile("msr cntkctl_el1, %0" :: "r"(cntkctl));
+    asm volatile("isb");
 
+    arch_timer_stop();
+    aarch64_gic->enable_int(27);
 }

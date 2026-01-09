@@ -75,7 +75,7 @@ void arch_thread_context_init(arch_thread_context_t *context, vm_addrspace_t *as
 
         arch_thread_init_stack_user_t *init_stack = (arch_thread_init_stack_user_t *)context->rsp;
         *init_stack = (arch_thread_init_stack_user_t) {
-            .userspace_init = x86_64_thread_userspace_init,
+            .userspace_init = __x86_64_thread_userspace_init,
             .entry = entry,
             .user_stack = x86_64_abi_stack_setup(as, ARCH_PAGE_GRAN * 8, argv, envp)
         };
