@@ -11,10 +11,9 @@
 
 typedef struct
 {
-    bool used;
-    void (*handler)(uint32_t irq, void *context);
+    irq_handler_fn handler;
     void *context;
-    uint32_t target_cpuid;
+    irq_handle_t handle;
 }
 irq_desc_t;
 
@@ -24,36 +23,40 @@ static irq_desc_t irqs[MAX_IRQ];
 static spinlock_t slock = SPINLOCK_INIT;
 
 bool arch_irq_alloc(
-    void (*handler)(uint32_t irq, void *context),
+    irq_handler_fn handler,
     void *context,
     uint32_t target_cpuid,
-    uint32_t *out_irq
+    irq_handle_t *out_irq_handle
 )
 {
     spinlock_acquire(&slock);
 
-    for (size_t i = 0; i < MAX_IRQ; i++)
+    for (size_t i = aarch64_gic->min_global_irq; i < aarch64_gic->max_global_irq; i++)
     {
         irq_desc_t *desc = &irqs[i];
 
-        if (desc->used)
+        if (desc->handler)
             continue;
 
         *desc = (irq_desc_t) {
-            .used = true,
             .handler = handler,
             .context = context,
-            .target_cpuid = target_cpuid
+            .handle = (irq_handle_t) {
+                .vector = i,
+                .target_cpuid = target_cpuid
+            }
         };
 
         aarch64_gic->disable_int(i);
         // aarch64_gic->clear_pending(irq);
         aarch64_gic->set_target(i, target_cpuid);
-
-        // We leave it up to the caller to also enable the IRQ.
+        aarch64_gic->enable_int(i);
 
         spinlock_release(&slock);
-        *out_irq = i;
+        *out_irq_handle = (irq_handle_t) {
+            .vector = i,
+            .target_cpuid = target_cpuid
+        };
         return true;
     }
 
@@ -61,38 +64,15 @@ bool arch_irq_alloc(
     return false;
 }
 
-void arch_irq_free(uint32_t irq)
+void arch_irq_free(irq_handle_t handle)
 {
     spinlock_acquire(&slock);
 
-    irqs[irq].used = false;
-    // It doesn't hurt to disable the IRQ.
-    aarch64_gic->disable_int(irq);
+    aarch64_gic->disable_int(handle.vector);
+    irqs[handle.vector].handler = NULL;
     // aarch64_gic->clear_pending(irq);
 
     spinlock_release(&slock);
-}
-
-void arch_irq_enable(uint32_t irq)
-{
-    aarch64_gic->enable_int(irq);
-}
-
-void arch_irq_disable(uint32_t irq)
-{
-    aarch64_gic->disable_int(irq);
-}
-
-void arch_irq_dispatch(uint32_t irq)
-{
-    spinlock_acquire(&slock);
-    irq_desc_t desc = irqs[irq];
-    spinlock_release(&slock);
-
-    if (!desc.used)
-        panic("Unused IRQ was dispatched!");
-
-    desc.handler(irq, desc.context);
 }
 
 // Interrupt handling
@@ -135,7 +115,16 @@ void aarch64_int_handler(
             uint32_t intid = iar & 0x3ff;
 
             if (intid < 1020)
-                arch_irq_dispatch(intid);
+            {
+                spinlock_acquire(&slock);
+                irq_desc_t desc = irqs[intid];
+                spinlock_release(&slock);
+
+                if (!desc.handler)
+                    panic("Unused IRQ was dispatched!");
+
+                desc.handler(desc.handle, desc.context);
+            }
 
             aarch64_gic->end_of_int(iar);
             return;
