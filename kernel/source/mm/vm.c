@@ -323,9 +323,6 @@ static void do_big_mappings(uintptr_t vaddr, uintptr_t paddr, size_t length)
                 break;
         }
 
-        if (page_size > 0x1000)
-            log(LOG_DEBUG, "> %llx", page_size);
-
         arch_paging_map_page(
             vm_kernel_as->page_map,
             vaddr + i,
