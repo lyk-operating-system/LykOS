@@ -46,10 +46,7 @@ bool arch_irq_alloc(
         };
 
         spinlock_release(&slock);
-        *out_irq_handle = (irq_handle_t) {
-            .vector = i,
-            .target_cpuid = target_cpuid
-        };
+        *out_irq_handle = desc->handle;
         return true;
     }
 
@@ -80,12 +77,22 @@ cpu_state_t;
 
 void arch_int_handler(cpu_state_t *cpu_state)
 {
-    if (cpu_state->int_no < 32)
+    if (cpu_state->int_no < 32) // Exceptions
     {
-        log(LOG_INFO, "CPU EXCEPTION: %llx %#llx", cpu_state->int_no, cpu_state->err_code);
-        arch_lcpu_halt();
+        panic("CPU EXCEPTION: %llx %#llx", cpu_state->int_no, cpu_state->err_code);
     }
-    else
+    else if (cpu_state->int_no < 64) // IRQs - reserved for timer, ps/2 keyboard etc.
+    {
+        switch (cpu_state->int_no)
+        {
+            case 40:
+
+                break;
+            default:
+                break;
+        }
+    }
+    else // IRQs - reserved for peripherals
     {
         spinlock_acquire(&slock);
         irq_desc_t desc = irqs[cpu_state->int_no];

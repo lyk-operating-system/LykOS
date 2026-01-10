@@ -58,11 +58,6 @@ void arch_timer_oneshot(size_t us)
     lapic_write(REG_TIMER_INITIAL_COUNT, us * g_lapic_timer_freq / 1'000'000);
 }
 
-size_t arch_timer_get_local_irq()
-{
-    return IRQ;
-}
-
 // lapic.h
 
 void x86_64_lapic_send_eoi()

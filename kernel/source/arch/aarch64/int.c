@@ -53,10 +53,7 @@ bool arch_irq_alloc(
         aarch64_gic->enable_int(i);
 
         spinlock_release(&slock);
-        *out_irq_handle = (irq_handle_t) {
-            .vector = i,
-            .target_cpuid = target_cpuid
-        };
+        *out_irq_handle = desc->handle;
         return true;
     }
 
@@ -114,7 +111,15 @@ void aarch64_int_handler(
             uint32_t iar = aarch64_gic->ack_int();
             uint32_t intid = iar & 0x3ff;
 
-            if (intid < 1020)
+            if (intid < 16)// SGIs
+            {
+
+            }
+            else if (intid < 32) // PPIs
+            {
+
+            }
+            else if (intid < 1020) // SPIs
             {
                 spinlock_acquire(&slock);
                 irq_desc_t desc = irqs[intid];

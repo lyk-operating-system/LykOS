@@ -55,11 +55,6 @@ void arch_timer_oneshot(size_t us)
     write_cntv_ctl(1);
 }
 
-size_t arch_timer_get_local_irq()
-{
-    return 27;
-}
-
 uint64_t arch_timer_get_uptime_ns()
 {
     uint64_t cnt = read_cntvct();
@@ -72,7 +67,7 @@ uint64_t arch_timer_get_uptime_ns()
 
 void aarch64_timer_init_cpu()
 {
-    // Enable Read-Only access to the virtual counter for EL0 (User) without trapping to EL1.
+    // Enable read-only access to the virtual counter for EL0 without trapping to EL1.
     // This is important for performance reasons as it skips the need for a system call.
     uint64_t cntkctl;
     asm volatile("mrs %0, cntkctl_el1" : "=r"(cntkctl));
