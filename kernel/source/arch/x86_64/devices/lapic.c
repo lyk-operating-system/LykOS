@@ -2,7 +2,6 @@
 #include "arch/timer.h"
 #include "arch/x86_64/devices/lapic.h"
 //
-#include "arch/irq.h"
 #include "arch/x86_64/devices/pit.h"
 #include "arch/x86_64/msr.h"
 #include "hhdm.h"

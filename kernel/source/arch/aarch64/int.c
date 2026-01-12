@@ -1,76 +1,8 @@
-// API.h
-#include "arch/irq.h"
-//
 #include "arch/aarch64/devices/gic.h"
 #include "arch/lcpu.h"
 #include "log.h"
 #include "panic.h"
 #include "sync/spinlock.h"
-
-// irq.h API
-
-typedef struct
-{
-    irq_handler_fn handler;
-    void *context;
-    irq_handle_t handle;
-}
-irq_desc_t;
-
-#define MAX_IRQ 1020
-
-static irq_desc_t irqs[MAX_IRQ];
-static spinlock_t slock = SPINLOCK_INIT;
-
-bool arch_irq_alloc(
-    irq_handler_fn handler,
-    void *context,
-    uint32_t target_cpuid,
-    irq_handle_t *out_irq_handle
-)
-{
-    spinlock_acquire(&slock);
-
-    for (size_t i = aarch64_gic->min_global_irq; i < aarch64_gic->max_global_irq; i++)
-    {
-        irq_desc_t *desc = &irqs[i];
-
-        if (desc->handler)
-            continue;
-
-        *desc = (irq_desc_t) {
-            .handler = handler,
-            .context = context,
-            .handle = (irq_handle_t) {
-                .vector = i,
-                .target_cpuid = target_cpuid
-            }
-        };
-
-        aarch64_gic->disable_int(i);
-        // aarch64_gic->clear_pending(irq);
-        aarch64_gic->set_target(i, target_cpuid);
-        aarch64_gic->enable_int(i);
-
-        spinlock_release(&slock);
-        *out_irq_handle = desc->handle;
-        return true;
-    }
-
-    spinlock_release(&slock);
-    return false;
-}
-
-void arch_irq_free(irq_handle_t handle)
-{
-    spinlock_acquire(&slock);
-
-    aarch64_gic->disable_int(handle.vector);
-    irqs[handle.vector].handler = NULL;
-    // aarch64_gic->clear_pending(irq);
-
-    spinlock_release(&slock);
-}
 
 // Interrupt handling
 
@@ -80,6 +12,13 @@ typedef struct
 }
 __attribute__((packed))
 cpu_state_t;
+
+static void (*arch_timer_handler)();
+
+void arch_timer_set_handler_per_cpu(void (*handler)())
+{
+    arch_timer_handler = handler;
+}
 
 void aarch64_int_handler(
     const uint64_t source,
@@ -113,22 +52,23 @@ void aarch64_int_handler(
 
             if (intid < 16)// SGIs
             {
-
+                panic("Unhandled SGI %d", intid);
             }
             else if (intid < 32) // PPIs
             {
-
+                switch (intid)
+                {
+                    case 27: // Timer
+                        arch_timer_handler();
+                        break;
+                    default:
+                        panic("Unhandled PPI %d", intid);
+                        break;
+                }
             }
             else if (intid < 1020) // SPIs
             {
-                spinlock_acquire(&slock);
-                irq_desc_t desc = irqs[intid];
-                spinlock_release(&slock);
-
-                if (!desc.handler)
-                    panic("Unused IRQ was dispatched!");
-
-                desc.handler(desc.handle, desc.context);
+                panic("Unhandled SPI %d", intid);
             }
 
             aarch64_gic->end_of_int(iar);

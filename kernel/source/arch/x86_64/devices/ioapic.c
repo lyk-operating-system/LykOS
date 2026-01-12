@@ -1,11 +1,9 @@
 #include "arch/x86_64/devices/ioapic.h"
-#include "arch/irq.h"
-
+//
 #include "dev/acpi/tables/madt.h"
 #include "hhdm.h"
 #include "log.h"
 #include "panic.h"
-#include "sync/spinlock.h"
 
 #define IOREGSEL  0x00
 #define IOWIN     0x10
@@ -60,7 +58,7 @@ g_irq_redirection_table[16] = {
 };
 
 static uintptr_t ioapic_base = 0;
-static size_t global_irq_count;
+static uint32_t  global_irq_count;
 
 // Helpers
 

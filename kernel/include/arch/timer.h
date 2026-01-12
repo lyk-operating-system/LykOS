@@ -24,7 +24,7 @@ void arch_timer_oneshot(size_t us);
  *
  * @param handler A pointer to the function to be called on timer expiry.
  */
-void arch_timer_set_handler(void *handler());
+void arch_timer_set_handler_per_cpu(void (*handler)());
 
 /**
  * @brief Get system uptime in nanoseconds.
