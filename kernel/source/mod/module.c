@@ -82,7 +82,7 @@ int module_load(vnode_t *file, module_t **out)
         {
             uint64_t size = CEIL(section->sh_size, ARCH_PAGE_GRAN);
             uintptr_t mem;
-            vm_map_vnode(
+            vm_map(
                 vm_kernel_as,
                 0,
                 size,
@@ -104,7 +104,7 @@ int module_load(vnode_t *file, module_t **out)
         {
             uint64_t size = CEIL(section->sh_size, ARCH_PAGE_GRAN);
             uintptr_t mem;
-            vm_map_vnode(
+            vm_map(
                 vm_kernel_as,
                 0,
                 size,

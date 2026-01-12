@@ -1,6 +1,5 @@
 #include "arch/paging.h"
 
-#include "assert.h"
 #include "hhdm.h"
 #include "mm/heap.h"
 #include "mm/mm.h"
@@ -52,68 +51,97 @@ static inline uint64_t hh_leaf_flags(bool hh)
 
 int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t paddr, size_t size, int prot)
 {
-    uint64_t pml4e = (vaddr >> 39) & 0x1FF;
-    uint64_t pml3e = (vaddr >> 30) & 0x1FF;
-    uint64_t pml2e = (vaddr >> 21) & 0x1FF;
-    uint64_t pml1e = (vaddr >> 12) & 0x1FF;
-
-    pte_t *pml4 = map->pml4, *pml3, *pml2, *pml1;
-
     pte_t _prot = translate_prot(prot);
     bool hh = vaddr >= HHDM; // Is higher half?
 
-    // User perms must be set only in lower half.
-    ASSERT(hh ? !(_prot & PTE_USER) : (_prot & PTE_USER))
+    size_t indices[] = {
+        (vaddr >> 12) & 0x1FF, // PML1 entry
+        (vaddr >> 21) & 0x1FF, // PML2 entry
+        (vaddr >> 30) & 0x1FF, // PML3 entry
+        (vaddr >> 39) & 0x1FF  // PML4 entry
+    };
 
-    // PML4 -> PML3
-    if (pml4[pml4e] & PTE_PRESENT)
-        pml3 = (pte_t *)(PTE_ADDR_MASK(pml4[pml4e]) + HHDM);
-    else
+    pte_t *table = map->pml4;
+    size_t level;
+    size_t target_level = (size == 1 * GIB) ? 2 : (size == 2 * MIB) ? 1 : 0;
+    for (level = 3; level > target_level; level--)
     {
-        uintptr_t phys = pm_alloc(0)->addr;
-        pml3 = (pte_t *)(phys + HHDM);
-        memset(pml3, 0, 0x1000);
-        pml4[pml4e] = phys | PTE_PRESENT | PTE_WRITE | hh_user_flag(hh);
+        size_t idx = indices[level];
+
+        if (!(table[idx] & PTE_PRESENT))
+        {
+            uintptr_t phys = pm_alloc(0)->addr;
+            pte_t *next_table = (pte_t *)(phys + HHDM);
+            memset(next_table, 0, 0x1000);
+            table[idx] = phys | PTE_PRESENT | PTE_WRITE | hh_user_flag(hh);
+        }
+
+        pm_page_refcount_inc(pm_phys_to_page(PTE_ADDR_MASK((uintptr_t)table - HHDM)));
+        table = (pte_t *)(PTE_ADDR_MASK(table[idx]) + HHDM);
     }
 
-    // 1 GiB page
-    if (size == 1 * GIB)
+    uint64_t leaf_idx = indices[target_level];
+    pm_page_refcount_inc(pm_phys_to_page(PTE_ADDR_MASK((uintptr_t)table - HHDM)));
+    table[leaf_idx] = paddr | PTE_PRESENT | _prot | hh_leaf_flags(hh);
+    if (target_level > 0) // Add Huge bit if mapping 2MiB or 1GiB.
+        table[leaf_idx] |= PTE_HUGE;
+
+    return 0;
+}
+
+int arch_paging_unmap_page(arch_paging_map_t *map, uintptr_t vaddr)
+{
+    size_t indices[] = {
+        (vaddr >> 12) & 0x1FF, // PML1 entry
+        (vaddr >> 21) & 0x1FF, // PML2 entry
+        (vaddr >> 30) & 0x1FF, // PML3 entry
+        (vaddr >> 39) & 0x1FF  // PML4 entry
+    };
+
+    pte_t *tables[4]; // Track visited tables to climb back up later.
+    tables[3] = map->pml4;
+
+    // Descend
+    size_t level;
+    for (level = 3; level >= 1; level--)
     {
-        pml3[pml3e] = paddr | _prot | PTE_PRESENT | PTE_HUGE | hh_leaf_flags(hh);
-        return 0;
+        size_t idx = indices[level];
+
+        pte_t entry = tables[level][idx];
+        if (!(entry & PTE_PRESENT)) // Not mapped, nothing to do.
+            return -1;
+        if (entry & PTE_HUGE) // Huge Page, end walk early.
+            break;
+
+        tables[level - 1] = (pte_t *)(PTE_ADDR_MASK(entry) + HHDM);
     }
 
-    // PML3 -> PML2
-    if (pml3[pml3e] & PTE_PRESENT)
-        pml2 = (pte_t *)(PTE_ADDR_MASK(pml3[pml3e]) + HHDM);
-    else
+    // Clear the mapping
+    size_t leaf_idx = indices[level];
+    tables[level][leaf_idx] = 0;
+
+    // Ascend
+    for (; level <= 3; level++)
     {
-        uintptr_t phys = pm_alloc(0)->addr;
-        pml2 = (pte_t *)(phys + HHDM);
-        memset(pml2, 0, 0x1000);
-        pml3[pml3e] = phys | PTE_PRESENT | PTE_WRITE | hh_user_flag(hh);
+        uintptr_t table_phys = (uintptr_t)tables[level] - HHDM;
+
+        // Check if the table is empty.
+        if (!pm_page_refcount_dec(pm_phys_to_page(table_phys)))
+            break;
+
+        // Don't free the PML4 (level 3).
+        if (level < 3)
+        {
+            size_t parent_idx = indices[level + 1];
+            tables[level + 1][parent_idx] = 0;
+
+            pm_free(pm_phys_to_page(table_phys));
+        }
     }
 
-    // 2 MiB page
-    if (size == 2 * MIB)
-    {
-        pml2[pml2e] = paddr | _prot | PTE_PRESENT | PTE_HUGE | hh_leaf_flags(hh);
-        return 0;
-    }
+    // Flush TLB
+    asm volatile("invlpg (%0)" ::"r"(vaddr) : "memory");
 
-    // PML2 -> PML1
-    if (pml2[pml2e] & PTE_PRESENT)
-        pml1 = (pte_t *)(PTE_ADDR_MASK(pml2[pml2e]) + HHDM);
-    else
-    {
-        uintptr_t phys = pm_alloc(0)->addr;
-        pml1 = (pte_t *)(phys + HHDM);
-        memset(pml1, 0, 0x1000);
-        pml2[pml2e] = phys | PTE_PRESENT | PTE_WRITE | hh_user_flag(hh);
-    }
-
-    // 4 KiB page
-    pml1[pml1e] = paddr | _prot | PTE_PRESENT | hh_leaf_flags(hh);
     return 0;
 }
 

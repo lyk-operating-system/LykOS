@@ -1,6 +1,7 @@
 #include "mm/vm.h"
 
 #include "arch/types.h"
+#include "assert.h"
 #include "bootreq.h"
 #include "hhdm.h"
 #include "log.h"
@@ -18,7 +19,122 @@
 
 vm_addrspace_t *vm_kernel_as;
 
-// Helpers
+// Pagers
+
+// Anonymous memory pager
+
+static int anon_get_page([[maybe_unused]] vm_object_t *obj,
+                         [[maybe_unused]] uintptr_t offset,
+                         page_t **out_page)
+{
+    page_t *page = pm_alloc(0);
+    if (!page)
+        return ENOMEM;
+
+    memset((void *)(page->addr + HHDM), 0, ARCH_PAGE_GRAN);
+
+    *out_page = page;
+    return 0;
+}
+
+static const vm_pager_ops_t anon_pager_ops = {
+    .get_page = anon_get_page,
+    .put_page = NULL,
+    .cleanup  = NULL
+};
+
+// VNode pager
+
+static int vnode_get_page(vm_object_t *obj, uintptr_t offset, page_t **out_page)
+{
+    vnode_t *vn = (vnode_t *)obj->pager_data;
+
+    // Allocate a physical page to hold the file data.
+    page_t *page = pm_alloc(0);
+    if (!page)
+        return ENOMEM;
+
+    // Read from the vnode at the requested offset.
+    uint64_t read_count;
+    int err = vfs_read(vn, (void *)(page->addr + HHDM), ARCH_PAGE_GRAN, offset, &read_count);
+
+    if (err != EOK)
+    {
+        pm_free(page);
+        return EIO;
+    }
+
+    // Zero out the rest of the page.
+    if (read_count < ARCH_PAGE_GRAN)
+        memset((void *)(page->addr + HHDM + read_count), 0, ARCH_PAGE_GRAN - read_count);
+
+    *out_page = page;
+    return 0;
+}
+
+static int vnode_put_page([[maybe_unused]] vm_object_t *obj,
+                          [[maybe_unused]] page_t *page)
+{
+    /*
+     * Write a dirty page back to disk.
+     * Not supported yet.
+     */
+    return 0;
+}
+
+static void vnode_cleanup(vm_object_t *obj)
+{
+    // vnode_t *vn = (vnode_t *)obj->pager_data;
+    // if (vn)
+    //     vnode_ref_dec(vn);
+}
+
+const vm_pager_ops_t vnode_pager_ops = {
+    .get_page = vnode_get_page,
+    .put_page = vnode_put_page,
+    .cleanup  = vnode_cleanup
+};
+
+// Object helpers
+
+vm_object_t *vm_object_create(vnode_t *vn, size_t size)
+{
+    vm_object_t *obj = heap_alloc(sizeof(vm_object_t));
+    if (!obj)
+        return NULL;
+
+    *obj = (vm_object_t) {
+        .size = size,
+        .pages = XARRAY_INIT,
+        .shadow = NULL,
+        .refcount = 1,
+        .slock = SPINLOCK_INIT
+    };
+
+    if (vn)
+    {
+        obj->pager = &vnode_pager_ops;
+        obj->pager_data = vn;
+    }
+    else // Anonymous memory
+    {
+        obj->pager = &anon_pager_ops;
+        obj->pager_data = NULL;
+    }
+
+    return obj;
+}
+
+void vm_object_destroy(vm_object_t *obj)
+{
+    ASSERT(obj);
+
+    //
+
+    heap_free(obj);
+}
+
+// Segment utils
 
 static vm_segment_t *check_collision(vm_addrspace_t *as, uintptr_t base, size_t length)
 {
@@ -93,20 +209,20 @@ static bool page_fault(vm_addrspace_t *as, uintptr_t virt)
     if (!seg)
         return false;
 
-    if (seg->vn)
-    {
+    // if (seg->vn)
+    // {
 
-    }
-    else
-    {
-        page_t *page = pm_alloc(0);
-        if (!page)
-            return false;
+    // }
+    // else
+    // {
+    //     page_t *page = pm_alloc(0);
+    //     if (!page)
+    //         return false;
 
-        uintptr_t phys = page->addr;
-        memset((void *)(phys + HHDM), 0, ARCH_PAGE_GRAN);
-        arch_paging_map_page(as->page_map, FLOOR(virt, ARCH_PAGE_GRAN), phys, ARCH_PAGE_GRAN, seg->prot);
-    }
+    //     uintptr_t phys = page->addr;
+    //     memset((void *)(phys + HHDM), 0, ARCH_PAGE_GRAN);
+    //     arch_paging_map_page(as->page_map, FLOOR(virt, ARCH_PAGE_GRAN), phys, ARCH_PAGE_GRAN, seg->prot);
+    // }
 
     return true;
 }
@@ -137,15 +253,14 @@ static int resolve_vaddr(vm_addrspace_t *as, uintptr_t vaddr, uintptr_t length, 
     return EOK;
 }
 
-int vm_map_vnode(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
-                 int prot, int flags,
-                 vnode_t *vn, uintptr_t offset,
-                 uintptr_t *out)
+int vm_map(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
+           int prot, int flags,
+           vnode_t *vn, uintptr_t offset,
+           uintptr_t *out)
 {
-    (void)vn;
-
     spinlock_acquire(&as->slock);
 
+    // Determine where the segment goes in the virtual address space.
     int ret = resolve_vaddr(as, vaddr, length, flags, &vaddr);
     if (ret != EOK)
     {
@@ -153,7 +268,21 @@ int vm_map_vnode(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
         return ret;
     }
 
+    // Create or find the object.
+    vm_object_t *obj = vm_object_create(vn, length);
+    if (!obj)
+    {
+        spinlock_release(&as->slock);
+        return ENOMEM;
+    }
+
+    // Initialize and insert the segment.
     vm_segment_t *seg = heap_alloc(sizeof(vm_segment_t));
+    if (!seg)
+    {
+        spinlock_release(&as->slock);
+        return ENOMEM;
+    }
     *seg = (vm_segment_t) {
         .start = vaddr,
         .length = length,
@@ -165,14 +294,14 @@ int vm_map_vnode(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
 
     for (size_t i = 0; i < length; i += ARCH_PAGE_GRAN)
     {
-        // Fewer TLB entries/lookups are needed when zeroing via the HHDM (it is mapped with large pages).
-        uintptr_t phys = pm_alloc(0)->addr;
-        memset((void *)(phys + HHDM), 0, ARCH_PAGE_GRAN);
-        arch_paging_map_page(as->page_map, vaddr + i, phys, ARCH_PAGE_GRAN, prot);
+        page_t *page = NULL;
+        if (obj->pager->get_page(obj, offset + i, &page) != 0)
+            panic("Out of memory!");
+        xa_insert(&obj->pages, (offset + i) / ARCH_PAGE_GRAN, page);
+        arch_paging_map_page(as->page_map, vaddr + i, page->addr, ARCH_PAGE_GRAN, prot);
     }
 
     spinlock_release(&as->slock);
-
     *out = vaddr;
     return EOK;
 }
@@ -184,22 +313,28 @@ int vm_unmap(vm_addrspace_t *as, uintptr_t vaddr, size_t length)
     FOREACH(n, as->segments)
     {
         vm_segment_t *seg = LIST_GET_CONTAINER(n, vm_segment_t, list_node);
-        if (seg->start != vaddr)
-            continue;
 
-        list_remove(&as->segments, n);
-        heap_free(seg);
-        // TODO: also free underlying allocated phys memory
-        break;
+        if (seg->start == vaddr && seg->length == length)
+        {
+            for (size_t i = 0; i < seg->length; i += ARCH_PAGE_GRAN)
+                arch_paging_unmap_page(as->page_map, seg->start + i);
+            vm_object_destroy(seg->object); // This handles freeing physical memory.
+
+            list_remove(&as->segments, n);
+            heap_free(seg);
+
+            spinlock_release(&as->slock);
+            return EOK;
+        }
     }
 
     spinlock_release(&as->slock);
-    return EOK;
+    return ENOENT;
 }
 
 // Userspace utils
 
-size_t vm_copy_to_user(vm_addrspace_t *dest_as, uintptr_t dest, void *src, size_t count)
+size_t vm_copy_to_user(vm_addrspace_t *dest_as, uintptr_t dest, const void *src, size_t count)
 {
     size_t i = 0;
     while (i < count)
@@ -241,7 +376,7 @@ size_t vm_copy_from_user(vm_addrspace_t *src_as, void *dest, uintptr_t src, size
     return i;
 }
 
-size_t vm_zero_out_user(vm_addrspace_t *dest_as, uintptr_t dest, void *src, size_t count)
+size_t vm_zero_out_user(vm_addrspace_t *dest_as, uintptr_t dest, size_t count)
 {
     size_t i = 0;
     while (i < count)
@@ -255,9 +390,8 @@ size_t vm_zero_out_user(vm_addrspace_t *dest_as, uintptr_t dest, void *src, size
         }
 
         size_t len = MIN(count - i, ARCH_PAGE_GRAN - offset);
-        memcpy((void*)(phys + HHDM), src, len);
+        memset((void*)(phys + HHDM), 0, len);
         i += len;
-        src = (void *)((uintptr_t)src + len);
     }
     return i;
 }
@@ -297,39 +431,40 @@ void vm_addrspace_destroy(vm_addrspace_t *as)
 
 vm_addrspace_t *vm_addrspace_clone(vm_addrspace_t *parent_as)
 {
-    vm_addrspace_t *child_as = vm_addrspace_create();
+    // vm_addrspace_t *child_as = vm_addrspace_create();
 
-    child_as->limit_low = parent_as->limit_low;
-    child_as->limit_high = parent_as->limit_high;
+    // child_as->limit_low = parent_as->limit_low;
+    // child_as->limit_high = parent_as->limit_high;
 
-    spinlock_acquire(&parent_as->slock);
+    // spinlock_acquire(&parent_as->slock);
 
-    FOREACH(node, parent_as->segments)
-    {
-        vm_segment_t *parent_seg = LIST_GET_CONTAINER(node, vm_segment_t, list_node);
+    // FOREACH(node, parent_as->segments)
+    // {
+    //     vm_segment_t *parent_seg = LIST_GET_CONTAINER(node, vm_segment_t, list_node);
 
-        uintptr_t child_addr;
-        vm_map_vnode(child_as, parent_seg->start, parent_seg->length,
-                parent_seg->prot,
-                parent_seg->flags, parent_seg->vn, parent_seg->offset,
-                &child_addr
-                );
+    //     uintptr_t child_addr;
+    //     vm_map(child_as, parent_seg->start, parent_seg->length,
+    //             parent_seg->prot,
+    //             parent_seg->flags, parent_seg->vn, parent_seg->offset,
+    //             &child_addr
+    //             );
 
-        size_t copy_size = parent_seg->length;
-        void *temp = heap_alloc(copy_size);
-        if (!temp) return NULL;
+    //     size_t copy_size = parent_seg->length;
+    //     void *temp = heap_alloc(copy_size);
+    //     if (!temp) return NULL;
 
-        size_t copied = vm_copy_from_user(parent_as, temp, parent_seg->start, copy_size);
+    //     size_t copied = vm_copy_from_user(parent_as, temp, parent_seg->start, copy_size);
 
-        if (copied == copy_size)
-            vm_copy_to_user(child_as, parent_seg->start, temp, copy_size);
+    //     if (copied == copy_size)
+    //         vm_copy_to_user(child_as, parent_seg->start, temp, copy_size);
 
-        heap_free(temp);
-    }
+    //     heap_free(temp);
+    // }
 
-    spinlock_release(&parent_as->slock);
+    // spinlock_release(&parent_as->slock);
 
-    return child_as;
+    // return child_as;
+    return NULL;
 }
 
 // Address space loading

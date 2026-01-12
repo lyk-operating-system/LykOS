@@ -26,7 +26,7 @@ proc_t *proc_create(const char *name, bool user)
         .proc_list_node = LIST_NODE_INIT,
         .slock = SPINLOCK_INIT,
         .ref_count = 1,
-        .fd_table = proc->fd_table
+        .fd_table = heap_alloc(sizeof(fd_table_t))
     };
 
     fd_table_init(proc->fd_table);

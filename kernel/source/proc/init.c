@@ -67,7 +67,7 @@ proc_t *init_load(vnode_t *file)
             uint64_t  diff  = end - start;
 
             uintptr_t out;
-            int err = vm_map_vnode(
+            int err = vm_map(
                 proc->as,
                 start,
                 diff,

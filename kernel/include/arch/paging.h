@@ -9,6 +9,8 @@ typedef struct arch_paging_map arch_paging_map_t;
 
 int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t paddr, size_t size, int prot);
 
+int arch_paging_unmap_page(arch_paging_map_t *map, uintptr_t vaddr);
+
 // Utils
 
 bool arch_paging_vaddr_to_paddr(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t *out_paddr);

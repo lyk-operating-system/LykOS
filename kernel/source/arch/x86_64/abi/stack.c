@@ -4,7 +4,7 @@
 uintptr_t x86_64_abi_stack_setup(vm_addrspace_t *as, size_t stack_size, char **argv, char **envp)
 {
     uintptr_t stack_ptr;
-    vm_map_vnode(
+    vm_map(
         as,
         0,
         stack_size,
