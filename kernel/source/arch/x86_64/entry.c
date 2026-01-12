@@ -8,6 +8,7 @@
 #include "proc/smp.h"
 #include "proc/thread.h"
 
+#include "arch/x86_64/devices/hpet.h"
 #include "arch/x86_64/devices/ioapic.h"
 #include "arch/x86_64/fpu.h"
 #include "arch/x86_64/tables/gdt.h"
@@ -51,8 +52,10 @@ void __entry()
     // ACPI
     acpi_init();
 
-    // IOAPIC & LAPIC
+    // IOAPIC
     x86_64_ioapic_init(); // requires acpi
+    // HPET
+    x86_64_hpet_init(); // requires acpi
 
     kernel_main();
 }

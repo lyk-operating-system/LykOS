@@ -2,7 +2,8 @@
 
 #include <stdint.h>
 
-bool hpet_init();
-uint64_t hpet_get_frequency();
-uint64_t hpet_read_counter();
-void hpet_sleep_ns(uint64_t nanoseconds);
+uint64_t x86_64_hpet_get_frequency();
+uint64_t x86_64_hpet_read_counter();
+void x86_64_hpet_sleep_ns(uint64_t nanoseconds);
+
+bool x86_64_hpet_init();

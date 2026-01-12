@@ -6,7 +6,6 @@
 #include "dev/acpi/tables/hpet.h"
 #include "log.h"
 #include "mm/mm.h"
-#include "uapi/errno.h"
 #include <stdint.h>
 
 #define HPET_GENERAL_CAPABILITIES   0x00
@@ -43,7 +42,7 @@ static inline void hpet_write_reg(uint64_t offset, uint64_t value)
     *(volatile uint64_t *)((uintptr_t)hpet_base + offset) = value;
 }
 
-bool hpet_init()
+bool x86_64_hpet_init()
 {
     acpi_hpet_table_t *hpet_table = (acpi_hpet_table_t *)acpi_lookup("HPET");
     if(!hpet_table)
@@ -65,15 +64,15 @@ bool hpet_init()
     return true;
 }
 
-uint64_t hpet_get_frequency()
+uint64_t x86_64_hpet_get_frequency()
 {
     if (hpet_period_fs == 0)
         return 0;
 
-    return 1000000000000000ULL / hpet_period_fs;
+    return 1'000'000'000'000'000ULL / hpet_period_fs;
 }
 
-uint64_t hpet_read_counter()
+uint64_t x86_64_hpet_read_counter()
 {
     if (!hpet_base)
         return 0;
@@ -81,31 +80,31 @@ uint64_t hpet_read_counter()
     return hpet_read_reg(HPET_MAIN_COUNTER_VALUE);
 }
 
-void hpet_sleep_ns(uint64_t nanoseconds)
+void x86_64_hpet_sleep_ns(uint64_t nanoseconds)
 {
     if (!hpet_base || hpet_period_fs == 0)
         return;
 
-    uint64_t ticks = (nanoseconds * 1000000ULL) / hpet_period_fs;
+    uint64_t ticks = (nanoseconds * 1'000'000ULL) / hpet_period_fs;
 
-    uint64_t start = hpet_read_counter();
+    uint64_t start = x86_64_hpet_read_counter();
     uint64_t end = start + ticks;
 
     // If overflow (for 32bit)
     if (end < start)
     {
-        while (hpet_read_counter() > start)
-            __asm__ volatile ("pause");
+        while (x86_64_hpet_read_counter() > start)
+            asm volatile ("pause");
     }
 
-    while (hpet_read_counter() < end)
-        __asm__ volatile ("pause");
+    while (x86_64_hpet_read_counter() < end)
+        asm volatile ("pause");
 }
 
-uint64_t arch_timer_get_uptime_ns(void)
+uint64_t arch_timer_get_uptime_ns()
 {
-    uint64_t cnt = hpet_read_counter();
-    uint64_t freq = hpet_get_frequency();
+    uint64_t cnt = x86_64_hpet_read_counter();
+    uint64_t freq = x86_64_hpet_get_frequency();
 
-    return (cnt * 1000000000ULL) / freq;
+    return (cnt * 1'000'000'000ULL) / freq;
 }
