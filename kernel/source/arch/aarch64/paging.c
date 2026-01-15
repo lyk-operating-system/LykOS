@@ -41,67 +41,98 @@ static uint64_t translate_prot(int prot)
 
 int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t paddr, size_t size, int prot)
 {
-    uint64_t l0e = (vaddr >> 39) & 0x1FF;
-    uint64_t l1e = (vaddr >> 30) & 0x1FF;
-    uint64_t l2e = (vaddr >> 21) & 0x1FF;
-    uint64_t l3e = (vaddr >> 12) & 0x1FF;
-
-    pte_t *l0 = map->pml4[vaddr >= HHDM ? 1 : 0];
-    pte_t *l1;
-    pte_t *l2;
-    pte_t *l3;
-
     pte_t _prot = translate_prot(prot);
+    pte_t *table = map->pml4[vaddr >= HHDM ? 1 : 0]; // Is higher half?
 
-    // L0 -> L1
-    if (l0[l0e] & PTE_VALID)
-        l1 = (pte_t *)(PTE_ADDR_MASK(l0[l0e]) + HHDM);
-    else
+    size_t indices[] = {
+        (vaddr >> 39) & 0x1FF, // Level 0
+        (vaddr >> 30) & 0x1FF, // Level 1
+        (vaddr >> 21) & 0x1FF, // Level 2
+        (vaddr >> 12) & 0x1FF  // Level 3
+    };
+
+    size_t target_level = (size == 1 * GIB) ? 1 : (size == 2 * MIB) ? 2 : 3;
+    for (size_t level = 0; level < target_level; level++)
     {
-        uintptr_t phys = pm_alloc(0)->addr;
-        l1 = (pte_t *)(phys + HHDM);
-        memset(l1, 0, 0x1000);
-        l0[l0e] = phys | PTE_VALID | PTE_TABLE | PTE_ACCESS;
+        size_t idx = indices[level];
+
+        if (!(table[idx] & PTE_VALID))
+        {
+            uintptr_t phys = pm_alloc(0)->addr;
+            pte_t *next_table = (pte_t *)(phys + HHDM);
+            memset(next_table, 0, 0x1000);
+            table[idx] = phys | PTE_VALID | PTE_TABLE | PTE_ACCESS;
+        }
+
+        pm_page_refcount_inc(pm_phys_to_page(PTE_ADDR_MASK((uintptr_t)table - HHDM)));
+        table = (pte_t *)(PTE_ADDR_MASK(table[idx]) + HHDM);
     }
 
-    // 1 GiB block
-    if (size == 1 * GIB)
+    size_t leaf_idx = indices[target_level];
+    pm_page_refcount_inc(pm_phys_to_page(PTE_ADDR_MASK((uintptr_t)table - HHDM)));
+    uint64_t type_bit = (target_level == 3) ? PTE_TABLE : 0 /* block */;
+    table[leaf_idx] = paddr | PTE_VALID | type_bit | PTE_ACCESS | _prot;
+
+    return 0;
+}
+
+int arch_paging_unmap_page(arch_paging_map_t *map, uintptr_t vaddr)
+{
+    size_t indices[] = {
+        (vaddr >> 39) & 0x1FF, // Level 0
+        (vaddr >> 30) & 0x1FF, // Level 1
+        (vaddr >> 21) & 0x1FF, // Level 2
+        (vaddr >> 12) & 0x1FF  // Level 3
+    };
+
+    pte_t *tables[4];
+    tables[0] = map->pml4[vaddr >= HHDM ? 1 : 0]; // Is higher half?
+
+    // Descend
+    size_t level;
+    for (level = 0; level <= 2; level++)
     {
-        l1[l1e] = paddr | PTE_VALID | PTE_ACCESS | _prot;
-        return 0;
+        size_t idx = indices[level];
+        pte_t entry = tables[level][idx];
+
+        if (!(entry & PTE_VALID)) // Not mapped, nothing to do.
+            return -1;
+        if (!(entry & PTE_TABLE)) // Huge Page, end walk early.
+            break;
+
+        tables[level + 1] = (pte_t *)(PTE_ADDR_MASK(entry) + HHDM);
     }
 
-    // L1 -> L2
-    if (l1[l1e] & PTE_VALID)
-        l2 = (pte_t *)(PTE_ADDR_MASK(l1[l1e]) + HHDM);
-    else
+    // Clear the mapping.
+    size_t leaf_idx = indices[level];
+    tables[level][leaf_idx] = 0;
+
+    // Ascend
+    for (int l = (int)level; l >= 0; l--)
     {
-        uintptr_t phys = pm_alloc(0)->addr;
-        l2 = (pte_t *)(phys + HHDM);
-        memset(l2, 0, 0x1000);
-        l1[l1e] = phys | PTE_VALID | PTE_TABLE | PTE_ACCESS;
+        uintptr_t table_phys = (uintptr_t)tables[l] - HHDM;
+
+        // Check if the table is empty.
+        if (!pm_page_refcount_dec(pm_phys_to_page(table_phys)))
+            break;
+
+        // Don't free the root table.
+        if (l > 0)
+        {
+            size_t parent_idx = indices[l - 1];
+            tables[l - 1][parent_idx] = 0;
+
+            pm_free(pm_phys_to_page(table_phys));
+        }
     }
 
-    // 2 MiB block
-    if (size == 2 * MIB)
-    {
-        l2[l2e] = paddr | PTE_VALID | PTE_ACCESS | _prot;
-        return 0;
-    }
+    // Flush TLB
+    // vae1is = virt addr + EL1 + inner shareable
+    uintptr_t vpage = vaddr >> 12;
+    asm volatile("tlbi vae1is, %0" :: "r"(vpage) : "memory");
+    asm volatile("dsb ish" ::: "memory");
+    asm volatile("isb" ::: "memory");
 
-    // L2 -> L3
-    if (l2[l2e] & PTE_VALID)
-        l3 = (pte_t *)(PTE_ADDR_MASK(l2[l2e]) + HHDM);
-    else
-    {
-        uintptr_t phys = pm_alloc(0)->addr;
-        l3 = (pte_t *)(phys + HHDM);
-        memset(l3, 0, 0x1000);
-        l2[l2e] = phys | PTE_VALID | PTE_TABLE | PTE_ACCESS;
-    }
-
-    // 4 KiB page
-    l3[l3e] = paddr | PTE_VALID | PTE_TABLE | PTE_ACCESS | _prot;
     return 0;
 }
 
