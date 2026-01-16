@@ -14,6 +14,27 @@ static inline xa_node_t *xa_node_new()
     return n;
 }
 
+void *xa_get(const xarray_t *xa, size_t index)
+{
+    xa_node_t *n = xa->root;
+    if (!n)
+        return NULL;
+
+    for (int lvl = XA_LEVELS - 1; lvl > 0; lvl--)
+    {
+        size_t shift = lvl * XA_SHIFT;
+        size_t slot = ((index >> shift) & XA_MASK);
+
+        n = (xa_node_t *)n->slots[slot];
+        if (!n)
+            return NULL;
+    }
+
+    // leaf
+
+    return n->slots[index & XA_MASK];
+}
+
 bool xa_insert(xarray_t *xa, size_t index, void *value)
 {
     if (unlikely(!xa->root))
@@ -115,23 +136,140 @@ void *xa_remove(xarray_t *xa, size_t index)
     return target;
 }
 
-void *xa_get(const xarray_t *xa, size_t index)
+// Marks
+
+bool xa_get_mark(xarray_t *xa, size_t index, xa_mark_t mark)
 {
+    ASSERT(xa->root && mark <= XA_MARK_2);
+
     xa_node_t *n = xa->root;
-    if (!n)
-        return NULL;
 
     for (int lvl = XA_LEVELS - 1; lvl > 0; lvl--)
     {
-        size_t shift = lvl * XA_SHIFT;
-        size_t slot = ((index >> shift) & XA_MASK);
-
+        size_t slot = (index >> (lvl * XA_SHIFT)) & XA_MASK;
         n = (xa_node_t *)n->slots[slot];
-        if (!n)
-            return NULL;
+
+        ASSERT(n);
     }
 
-    // leaf
+    return (n->mark[mark] & (1ULL << (index & XA_MASK))) != 0;
+}
 
-    return n->slots[index & XA_MASK];
+void xa_set_mark(xarray_t *xa, size_t index, xa_mark_t mark)
+{
+    ASSERT(xa->root && mark <= XA_MARK_2);
+
+    xa_node_t *path[XA_LEVELS];
+    xa_node_t *curr = xa->root;
+
+    // descend
+    for (int lvl = XA_LEVELS - 1; lvl > 0; lvl--)
+    {
+        path[lvl] = curr;
+        curr = (xa_node_t *)curr->slots[(index >> (lvl * XA_SHIFT)) & XA_MASK];
+
+        ASSERT(curr); // Cannot mark a NULL entry
+    }
+    path[0] = curr;
+
+    // ascend
+    for (int lvl = 0; lvl < (int)XA_LEVELS; lvl++)
+    {
+        size_t slot = (index >> (lvl * XA_SHIFT)) & XA_MASK;
+        path[lvl]->mark[mark] |= (1ULL << slot);
+    }
+}
+
+void xa_clear_mark(xarray_t *xa, size_t index, xa_mark_t mark)
+{
+    ASSERT(xa->root && mark <= XA_MARK_2);
+
+    xa_node_t *path[XA_LEVELS];
+    xa_node_t *curr = xa->root;
+
+    // descend
+    for (int lvl = XA_LEVELS - 1; lvl > 0; lvl--)
+    {
+        path[lvl] = curr;
+        curr = (xa_node_t *)curr->slots[(index >> (lvl * XA_SHIFT)) & XA_MASK];
+
+        ASSERT(curr);
+    }
+    path[0] = curr;
+
+    // ascend
+    for (int lvl = 0; lvl < (int)XA_LEVELS; lvl++)
+    {
+        size_t slot = (index >> (lvl * XA_SHIFT)) & XA_MASK;
+        path[lvl]->mark[mark] &= ~(1ULL << slot);
+
+        // If this node still has other slots marked stop clearing.
+        if (path[lvl]->mark[mark] != 0)
+            break;
+    }
+}
+
+void *xa_find(xarray_t *xa, size_t *index, size_t max, xa_mark_t mark)
+{
+    ASSERT(xa->root && mark <= XA_MARK_2 && *index <= max);
+
+    size_t curr_idx = *index;
+
+    while (curr_idx <= max)
+    {
+        xa_node_t *n = xa->root;
+        bool branch_match = true;
+
+        // descend
+        for (int lvl = XA_LEVELS - 1; lvl >= 0; lvl--)
+        {
+            size_t shift = lvl * XA_SHIFT;
+            size_t slot = (curr_idx >> shift) & XA_MASK;
+
+            uint64_t available_marks = n->mark[mark] & (~0ULL << slot);
+            if (available_marks == 0)
+            {
+                size_t step = 1ull << shift;
+                curr_idx = (curr_idx & ~(step - 1)) + step;
+                branch_match = false;
+                break;
+            }
+
+            size_t next_slot = __builtin_ctzll(available_marks);
+            if (next_slot > slot)
+            {
+                size_t step = 1ull << shift;
+                curr_idx = (curr_idx & ~(step - 1)) + (next_slot * step);
+                branch_match = false;
+                break;
+            }
+
+            // If not at the leaf, move to the next level
+            if (lvl > 0)
+            {
+                n = (xa_node_t *)n->slots[slot];
+                if (!n)
+                {
+                    // safety check
+                    size_t step = 1ULL << shift;
+                    curr_idx = (curr_idx & ~(step - 1)) + step;
+                    branch_match = false;
+                    break;
+                }
+            }
+        }
+
+        // Found a leaf entry?
+        if (branch_match && curr_idx <= max)
+        {
+            *index = curr_idx;
+            return n->slots[curr_idx & XA_MASK];
+        }
+
+        // Check for overflow if max is the largest possible size_t
+        if (curr_idx == 0)
+            break;
+    }
+
+    return NULL;
 }
