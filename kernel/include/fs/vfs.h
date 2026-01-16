@@ -1,7 +1,9 @@
 #pragma once
 
+#include "sync/spinlock.h"
 #include "uapi/errno.h"
 #include "utils/list.h"
+#include "utils/xarray.h"
 #include <stdint.h>
 #include <stdatomic.h>
 
@@ -50,6 +52,8 @@ vnode_type_t;
 
 struct vnode
 {
+    // Metadata
+
     char *name;
     vnode_type_t type;
     uint32_t perm;
@@ -58,10 +62,18 @@ struct vnode
     uint64_t atime;
     uint64_t size;
 
+    // FS data and operations
+
     vnode_ops_t *ops;
     void *inode;
 
+    // Page cache
+
+    xarray_t pages;
+    unsigned flags;
+
     atomic_int refcount;
+    spinlock_t slock;
 };
 
 typedef struct

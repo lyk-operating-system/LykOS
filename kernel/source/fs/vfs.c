@@ -1,11 +1,14 @@
 #include "fs/vfs.h"
 
+#include "arch/types.h"
 #include "fs/ramfs.h"
+#include "hhdm.h"
 #include "log.h"
-#include "mm/heap.h"
 #include "mm/mm.h"
+#include "mm/pm.h"
 #include "uapi/errno.h"
 #include "utils/list.h"
+#include "utils/math.h"
 #include "utils/string.h"
 
 typedef struct trie_node trie_node_t;
@@ -23,7 +26,7 @@ struct trie_node
 static list_t vfs_list = LIST_INIT;
 static trie_node_t trie_root;
 
-// Utils
+// Utils and mountpoint
 
 static trie_node_t *find_child(trie_node_t *parent, const char *comp, size_t length)
 {
@@ -82,20 +85,114 @@ static char *vfs_get_mountpoint(const char *path, vnode_t **out)
  * Veneer layer.
  */
 
-int vfs_read(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count, uint64_t *out_bytes_read)
+static int get_page(vnode_t *vn, uint64_t pg_idx, bool read, page_t **out)
 {
-    if (!vn || !buffer)
-        return EINVAL;
+    page_t *page = xa_get(&vn->pages, pg_idx);
+    if (page)
+    {
+        *out = page;
+        return EOK;
+    }
 
-    return vn->ops->read(vn, buffer, offset, count, out_bytes_read);
+    page = pm_alloc(0);
+    if (!page)
+        return ENOMEM;
+
+    if (read)
+    {
+        uint64_t read_bytes;
+        int err = vn->ops->read(
+            vn,
+            (void *)(page->addr + HHDM),
+            pg_idx * ARCH_PAGE_GRAN,
+            ARCH_PAGE_GRAN,
+            &read_bytes
+        );
+        if (err != EOK)
+        {
+            pm_free(page);
+            return err;
+        }
+    }
+
+    xa_insert(&vn->pages, pg_idx, page);
+    *out = page;
+    return EOK;
 }
 
-int vfs_write(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count, uint64_t *out_bytes_written)
+int vfs_read(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count,
+             uint64_t *out_bytes_read)
 {
     if (!vn || !buffer)
         return EINVAL;
 
-    return vn->ops->write(vn, buffer, offset, count, out_bytes_written);
+    uint64_t total_read = 0;
+    while (total_read < count)
+    {
+        uint64_t pos     = offset + total_read;
+        uint64_t pg_idx  = pos / ARCH_PAGE_GRAN;
+        uint64_t pg_off  = pos % ARCH_PAGE_GRAN;
+        uint64_t to_copy = MIN(ARCH_PAGE_GRAN - pg_off, count - total_read);
+
+        page_t *page;
+        int err = get_page(vn, pg_idx, true, &page);
+        if (err != EOK)
+            return err;
+
+        memcpy(
+            (uint8_t *)buffer + total_read,
+            (uint8_t *)page->addr + HHDM + pg_off,
+            to_copy
+        );
+
+        total_read += to_copy;
+    }
+
+    if (out_bytes_read)
+        *out_bytes_read = total_read;
+    return EOK;
+}
+
+int vfs_write(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count,
+              uint64_t *out_bytes_written)
+{
+    if (!vn || !buffer)
+        return EINVAL;
+
+    uint64_t total_written = 0;
+    while (total_written < count)
+    {
+        uint64_t pos     = offset + total_written;
+        uint64_t pg_idx  = pos / ARCH_PAGE_GRAN;
+        uint64_t pg_off  = pos % ARCH_PAGE_GRAN;
+        uint64_t to_copy = MIN(ARCH_PAGE_GRAN - pg_off, count - total_written);
+
+        page_t *page;
+        int err = get_page(
+            vn,
+            pg_idx,
+            // read-modify-write only if needed
+            (pg_off == 0 && to_copy == ARCH_PAGE_GRAN) ? true : false,
+            &page
+        );
+        if (err != EOK)
+            return err;
+
+        memcpy(
+            (uint8_t *)page->addr + HHDM + pg_off,
+            (uint8_t *)buffer + total_written,
+            to_copy
+        );
+
+        xa_set_mark(&vn->pages, pg_idx, XA_MARK_0); // Mark dirty.
+        total_written += to_copy;
+    }
+
+    if (offset + total_written > vn->size)
+        vn->size = offset + total_written;
+    if (out_bytes_written)
+        *out_bytes_written = total_written;
+    return EOK;
 }
 
 int vfs_lookup(const char *path, vnode_t **out_vn)

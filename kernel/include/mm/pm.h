@@ -22,7 +22,6 @@ typedef struct
 }
 page_t;
 
-
 static inline void pm_page_refcount_inc(page_t *page)
 {
     atomic_fetch_add_explicit(&page->refcount, 1, memory_order_relaxed);
