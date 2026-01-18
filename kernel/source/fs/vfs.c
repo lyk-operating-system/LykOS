@@ -102,6 +102,7 @@ int vfs_lookup(const char *path, vnode_t **out_vn)
 {
     vnode_t *curr;
     path = vfs_get_mountpoint(path, &curr);
+    
     const char *comp;
     size_t comp_len;
 
@@ -111,9 +112,11 @@ int vfs_lookup(const char *path, vnode_t **out_vn)
         memcpy(name_buf, comp, comp_len);
         name_buf[comp_len] = '\0';
 
-        if (curr->ops->lookup(curr, name_buf, &curr) != EOK)
+        vnode_t *next;
+        if (curr->ops->lookup(curr, name_buf, &next) != EOK)
             return ENOENT;
-
+        
+        curr = next;
         path = comp + comp_len;
     }
 
@@ -172,6 +175,41 @@ int vfs_ioctl(vnode_t *vn, uint64_t cmd, void *arg)
     return vn->ops->ioctl(vn, cmd, arg);
 }
 
+int vfs_open(vnode_t *vn, int flags, void *cred)
+{
+    if (!vn)
+        return EINVAL;
+
+    // TODO: permission checks
+    
+    if (vn->ops->open)
+        return vn->ops->open(vn, flags, cred);
+    
+    return ENOTSUP;
+}
+
+int vfs_close(vnode_t *vn, int flags, void *cred)
+{
+    if (!vn)
+        return EINVAL;
+
+    // TODO: permission checks
+
+    if (vn->ops->close)
+        return vn->ops->close(vn, flags, cred);
+    
+    return ENOTSUP;
+}
+int vfs_destroy(vnode_t *vn)
+{
+    if (!vn)
+        return EINVAL;
+
+    if (vn->ops && vn->ops->destroy)
+        return vn->ops->destroy(vn, 0);
+
+    return ENOTSUP;
+}
 void vfs_init()
 {
     vfs_t *ramfs = ramfs_create();
