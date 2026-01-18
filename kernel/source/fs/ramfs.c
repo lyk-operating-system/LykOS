@@ -39,12 +39,16 @@ vfs_ops_t ramfs_ops = {
 
 static int read  (vnode_t *self, void *buf, uint64_t offset, uint64_t count, uint64_t *out);
 static int write (vnode_t *self, const void *buf, uint64_t offset, uint64_t count, uint64_t *out);
+static int open  (vnode_t *self, int flags, void *cred);
+static int close (vnode_t *self, int flags, void *cred);
 static int lookup(vnode_t *self, const char *name, vnode_t **out);
 static int create(vnode_t *self, const char *name, vnode_type_t t, vnode_t **out);
 static int remove(vnode_t *self, const char *name);
 static int readdir(vnode_t *self, vfs_dirent_t **out_entries, size_t *out_count);
 
 vnode_ops_t ramfs_node_ops = {
+    .open   = open,
+    .close  = close,
     .read   = read,
     .write  = write,
     .lookup = lookup,
@@ -59,6 +63,30 @@ static vnode_t *ramfs_get_root(vfs_t *self)
 {
     return (vnode_t *)self->private_data;
 }
+
+static int open(vnode_t *self, int flags, void *cred)
+{
+    if (!self)
+        return EINVAL;
+    
+    ramfs_node_t *node = (ramfs_node_t *)self;
+    
+    // TODO: implement proper credential checking)
+    // TODO: Can't open directory for writing
+    
+    node->vn.atime = arch_clock_get_unix_time();
+    
+    return EOK;
+}
+
+static int close(vnode_t *self, int flags, void *cred)
+{
+    if (!self)
+        return EINVAL;
+        
+    return EOK;
+}
+
 
 // Node Operations
 
@@ -200,6 +228,9 @@ static int remove(vnode_t *self, const char *name)
         ramfs_node_t *child = LIST_GET_CONTAINER(n, ramfs_node_t, list_node);
         if (strcmp(child->vn.name, name) == 0)
         {
+            if (atomic_load(&child->vn.refcount) > 1)
+                return EBUSY;
+            
             list_remove(&current->children, &child->list_node);
             FOREACH(c, child->children)
             {

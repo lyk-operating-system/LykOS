@@ -102,6 +102,7 @@ int vfs_lookup(const char *path, vnode_t **out_vn)
 {
     vnode_t *curr;
     path = vfs_get_mountpoint(path, &curr);
+    
     const char *comp;
     size_t comp_len;
 
@@ -111,9 +112,11 @@ int vfs_lookup(const char *path, vnode_t **out_vn)
         memcpy(name_buf, comp, comp_len);
         name_buf[comp_len] = '\0';
 
-        if (curr->ops->lookup(curr, name_buf, &curr) != EOK)
+        vnode_t *next;
+        if (curr->ops->lookup(curr, name_buf, &next) != EOK)
             return ENOENT;
-
+        
+        curr = next;
         path = comp + comp_len;
     }
 
@@ -172,10 +175,10 @@ int vfs_ioctl(vnode_t *vn, uint64_t cmd, void *arg)
     return vn->ops->ioctl(vn, cmd, arg);
 }
 
-static int vnode_destroy(vnode_t *vn)
+int vnode_destroy(vnode_t *vn, int flags)
 {
     if (!vn)
-        return;
+        return EINVAL;
 
     // Generic fallback
     vn->ops = NULL;
@@ -191,8 +194,10 @@ int vfs_open(vnode_t *vn, int flags, void *cred)
         return EINVAL;
 
     // TODO: permission checks
-
-    vnode_ref(vn);
+    
+    if (vn->ops->open)
+        return vn->ops->open(vn, flags, cred);
+    
     return EOK;
 }
 
@@ -203,7 +208,9 @@ int vfs_close(vnode_t *vn, int flags, void *cred)
 
     // TODO: permission checks
 
-    vnode_unref(vn);
+    if (vn->ops->close)
+        return vn->ops->close(vn, flags, cred);
+    
     return EOK;
 }
 
