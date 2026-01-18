@@ -72,8 +72,6 @@ typedef struct
 }
 vfs_dirent_t;
 
-int vnode_destroy(vnode_t *vn, int flags);
-
 /**
  * @brief Increment vnode reference count.
  *
@@ -100,7 +98,8 @@ static inline bool vnode_unref(vnode_t *vn)
 {
     if (atomic_fetch_sub_explicit(&vn->refcount, 1, memory_order_acq_rel) == 1)
     {
-        vnode_destroy(vn, 0);
+        if (vn->ops && vn->ops->destroy)
+            vn->ops->destroy(vn, 0);
         return true;
     }
     return false;
@@ -128,6 +127,8 @@ struct vnode_ops
 
 [[nodiscard]] int vfs_read(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count, uint64_t *out_bytes_read);
 [[nodiscard]] int vfs_write(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count, uint64_t *out_bytes_written);
+[[nodiscard]] int vfs_open(vnode_t *vn, int flags, void *cred);
+[[nodiscard]] int vfs_close(vnode_t *vn, int flags, void *cred);
 [[nodiscard]] int vfs_lookup(const char *path, vnode_t **out_vn);
 [[nodiscard]] int vfs_create(const char *path, vnode_type_t type, vnode_t **out_vn);
 [[nodiscard]] int vfs_remove(const char *path);

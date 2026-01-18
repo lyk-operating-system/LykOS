@@ -175,19 +175,6 @@ int vfs_ioctl(vnode_t *vn, uint64_t cmd, void *arg)
     return vn->ops->ioctl(vn, cmd, arg);
 }
 
-int vnode_destroy(vnode_t *vn, int flags)
-{
-    if (!vn)
-        return EINVAL;
-
-    // Generic fallback
-    vn->ops = NULL;
-    vn->inode = NULL;
-    vn->size = 0;
-    vn->type = VNON;
-    return EOK;
-}
-
 int vfs_open(vnode_t *vn, int flags, void *cred)
 {
     if (!vn)
@@ -198,7 +185,7 @@ int vfs_open(vnode_t *vn, int flags, void *cred)
     if (vn->ops->open)
         return vn->ops->open(vn, flags, cred);
     
-    return EOK;
+    return ENOTSUP;
 }
 
 int vfs_close(vnode_t *vn, int flags, void *cred)
@@ -211,7 +198,7 @@ int vfs_close(vnode_t *vn, int flags, void *cred)
     if (vn->ops->close)
         return vn->ops->close(vn, flags, cred);
     
-    return EOK;
+    return ENOTSUP;
 }
 
 void vfs_init()

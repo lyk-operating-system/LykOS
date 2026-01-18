@@ -41,6 +41,7 @@ static int read  (vnode_t *self, void *buf, uint64_t offset, uint64_t count, uin
 static int write (vnode_t *self, const void *buf, uint64_t offset, uint64_t count, uint64_t *out);
 static int open  (vnode_t *self, int flags, void *cred);
 static int close (vnode_t *self, int flags, void *cred);
+static int destroy(vnode_t *self, int flags);
 static int lookup(vnode_t *self, const char *name, vnode_t **out);
 static int create(vnode_t *self, const char *name, vnode_type_t t, vnode_t **out);
 static int remove(vnode_t *self, const char *name);
@@ -49,6 +50,7 @@ static int readdir(vnode_t *self, vfs_dirent_t **out_entries, size_t *out_count)
 vnode_ops_t ramfs_node_ops = {
     .open   = open,
     .close  = close,
+    .destroy = destroy,
     .read   = read,
     .write  = write,
     .lookup = lookup,
@@ -143,6 +145,7 @@ static int write(vnode_t *self, const void *buf, uint64_t offset, uint64_t count
         {
             page = (void*)(pm_alloc(0)->addr + HHDM);
             xa_insert(&node->pages, page_idx, page);
+            node->page_count = page_idx + 1;
         }
 
         memcpy((uint8_t *)page + page_off, src + written, to_copy);
