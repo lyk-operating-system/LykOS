@@ -200,7 +200,16 @@ int vfs_close(vnode_t *vn, int flags, void *cred)
     
     return ENOTSUP;
 }
+int vfs_destroy(vnode_t *vn)
+{
+    if (!vn)
+        return EINVAL;
 
+    if (vn->ops && vn->ops->destroy)
+        return vn->ops->destroy(vn, 0);
+
+    return ENOTSUP;
+}
 void vfs_init()
 {
     vfs_t *ramfs = ramfs_create();

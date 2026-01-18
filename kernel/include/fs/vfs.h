@@ -72,6 +72,8 @@ typedef struct
 }
 vfs_dirent_t;
 
+int vfs_destroy(vnode_t *vn);
+
 /**
  * @brief Increment vnode reference count.
  *
@@ -98,8 +100,7 @@ static inline bool vnode_unref(vnode_t *vn)
 {
     if (atomic_fetch_sub_explicit(&vn->refcount, 1, memory_order_acq_rel) == 1)
     {
-        if (vn->ops && vn->ops->destroy)
-            vn->ops->destroy(vn, 0);
+        vfs_destroy(vn);
         return true;
     }
     return false;
