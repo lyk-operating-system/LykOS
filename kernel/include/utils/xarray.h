@@ -17,8 +17,10 @@ typedef unsigned xa_mark_t;
 typedef struct
 {
     void *slots[XA_FANOUT];
+    uint64_t bitmap;
     size_t not_null_count;
     uint64_t mark[3];
+    size_t mark_count[3];
 }
 xa_node_t;
 
@@ -31,11 +33,34 @@ xarray_t;
 #define XARRAY_INIT \
     (xarray_t) { .root = NULL }
 
+/*
+ * Get, Insert, and Remove
+ */
+
 void *xa_get(const xarray_t *xa, size_t index);
 bool xa_insert(xarray_t *xa, size_t index, void *value);
 void *xa_remove(xarray_t *xa, size_t index);
 
+/*
+ * Marks
+ */
+
 bool xa_get_mark(xarray_t *xa, size_t index, xa_mark_t mark);
 void xa_set_mark(xarray_t *xa, size_t index, xa_mark_t mark);
 void xa_clear_mark(xarray_t *xa, size_t index, xa_mark_t mark);
-void *xa_find_mark(xarray_t *xa, size_t *out_index, void **out_value, xa_mark_t mark);
+
+/*
+ * Finds
+ */
+
+void *xa_find(xarray_t *xa, size_t *index, size_t max);
+void *xa_find_mark(xarray_t *xa, size_t *index, size_t max, xa_mark_t mark);
+
+/*
+ * Foreach
+ */
+
+#define xa_foreach(xa, index, entry) \
+    for ((index) = 0, (entry) = xa_find(xa, &(index), SIZE_MAX);    \
+        (entry) != NULL;                                            \
+        (index)++, (entry) = xa_find(xa, &(index), SIZE_MAX))

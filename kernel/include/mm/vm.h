@@ -16,39 +16,6 @@
 #define VM_MAP_FIXED_NOREPLACE 0x10
 #define VM_MAP_POPULATE        0x20
 
-typedef struct vm_pager_ops vm_pager_ops_t;
-typedef struct vm_object vm_object_t;
-
-struct vm_pager_ops
-{
-    /*
-     * Called when a page is missing from the XArray.
-     * The pager should allocate a physical page, fill it with data,
-     * and return it.
-     */
-    int (*get_page)(vm_object_t *obj, uintptr_t offset, page_t **out_page);
-
-    // Called when the VMM wants to push a dirty page to disk.
-    int (*put_page)(vm_object_t *obj, page_t *page);
-
-    // Called when the vm_object is being destroyed.
-    void (*cleanup)(vm_object_t *obj);
-};
-
-struct vm_object
-{
-    size_t size;
-    xarray_t pages;
-
-    const vm_pager_ops_t *pager;
-    void *pager_data; // eg. vnode
-
-    vm_object_t *shadow;
-
-    atomic_uint refcount;
-    spinlock_t slock;
-};
-
 typedef struct
 {
     uintptr_t start;
@@ -57,10 +24,8 @@ typedef struct
     int prot;
     int flags;
 
-    // Object backing this segment.
-    vm_object_t *object;
-    // Offset into the object where this segment starts.
-    uintptr_t offset;
+    vnode_t *vn; // Vnode backing this segment.
+    uint64_t offset; // Offset into the vnode where this segment starts.
 
     list_node_t list_node;
 }
@@ -85,7 +50,7 @@ extern vm_addrspace_t *vm_kernel_as;
 
 int vm_map(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
            int prot, int flags,
-           vnode_t *vn, uintptr_t offset,
+           vnode_t *vn, uint64_t offset,
            uintptr_t *out);
 int vm_unmap(vm_addrspace_t *as, uintptr_t vaddr, size_t length);
 

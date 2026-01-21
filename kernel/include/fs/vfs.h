@@ -1,11 +1,12 @@
 #pragma once
 
+#include "mm/pm.h"
 #include "sync/spinlock.h"
 #include "uapi/errno.h"
 #include "utils/list.h"
 #include "utils/xarray.h"
-#include <stdint.h>
 #include <stdatomic.h>
+#include <stdint.h>
 
 #define VFS_MAX_NAME_LEN 128
 #define VNODE_MAX_NAME_LEN 128
@@ -53,7 +54,6 @@ vnode_type_t;
 struct vnode
 {
     // Metadata
-
     char *name;
     vnode_type_t type;
     uint32_t perm;
@@ -62,23 +62,21 @@ struct vnode
     uint64_t atime;
     uint64_t size;
 
-    // FS data and operations
+    // Page cache
+    xarray_t pages;
 
+    // FS-specific ops and data
     vnode_ops_t *ops;
     void *inode;
 
-    // Page cache
-
-    xarray_t pages;
-    unsigned flags;
-
-    atomic_int refcount;
+    // Misc
+    atomic_uint refcount;
     spinlock_t slock;
 };
 
 typedef struct
 {
-    char name[VFS_MAX_NAME_LEN + 1];
+    char name[VNODE_MAX_NAME_LEN + 1];
     vnode_type_t type;
     // TODO: Add other fields
 }
@@ -118,26 +116,41 @@ static inline bool vnode_unref(vnode_t *vn)
 
 struct vnode_ops
 {
-    int (*read)   (vnode_t *vn, void *buffer, uint64_t offset, uint64_t count, uint64_t *out_bytes_read);
-    int (*write)  (vnode_t *vn, const void *buffer, uint64_t offset, uint64_t count, uint64_t *out_bytes_written);
+    // Read/Write
+    int (*read) (vnode_t *vn, void *buffer, uint64_t offset, uint64_t count,
+                 uint64_t *out_bytes_read);
+    int (*write)(vnode_t *vn, const void *buffer, uint64_t offset, uint64_t count,
+                 uint64_t *out_bytes_written);
+    // Directory
     int (*lookup) (vnode_t *vn, const char *name, vnode_t **out_vn);
     int (*create) (vnode_t *vn, const char *name, vnode_type_t type, vnode_t **out_vn);
     int (*remove) (vnode_t *vn, const char *name);
     int (*mkdir)  (vnode_t *vn, const char *name, vnode_t **out_vn);
     int (*rmdir)  (vnode_t *vn, const char *name);
     int (*readdir)(vnode_t *vn, vfs_dirent_t **out_entries, size_t *out_count);
-    int (*ioctl)  (vnode_t *vn, uint64_t cmd, void *arg);
+    // Misc
+    int (*ioctl)   (vnode_t *vn, uint64_t cmd, void *args);
+    int (*get_page)(vnode_t *vn, uint64_t offset, page_t **out_page);
 };
 
 /*
  * Veneer layer.
 */
 
+// Read/Write
 [[nodiscard]] int vfs_read(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count, uint64_t *out_bytes_read);
 [[nodiscard]] int vfs_write(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count, uint64_t *out_bytes_written);
+// Directory
 [[nodiscard]] int vfs_lookup(const char *path, vnode_t **out_vn);
 [[nodiscard]] int vfs_create(const char *path, vnode_type_t type, vnode_t **out_vn);
 [[nodiscard]] int vfs_remove(const char *path);
-[[nodiscard]] int vfs_ioctl(vnode_t *vn, uint64_t cmd, void *arg);
+// Misc
+[[nodiscard]] int vfs_ioctl(vnode_t *vn, uint64_t cmd, void *args);
+[[nodiscard]] int vfs_get_page(vnode_t *vn, uint64_t offset, page_t *out_page);
+[[nodiscard]] int vfs_sync(vnode_t *vn);
+
+/*
+ * Initialization
+ */
 
 void vfs_init();

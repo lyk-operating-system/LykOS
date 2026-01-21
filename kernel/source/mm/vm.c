@@ -15,85 +15,11 @@
 #include "utils/math.h"
 #include <stdint.h>
 
-// Global data
+/*
+ * Global data
+ */
 
 vm_addrspace_t *vm_kernel_as;
-
-// Pagers
-
-// Anonymous memory pager
-
-static int anon_get_page([[maybe_unused]] vm_object_t *obj,
-                         [[maybe_unused]] uintptr_t offset,
-                         page_t **out_page)
-{
-    page_t *page = pm_alloc(0);
-    if (!page)
-        return ENOMEM;
-
-    memset((void *)(page->addr + HHDM), 0, ARCH_PAGE_GRAN);
-
-    *out_page = page;
-    return 0;
-}
-
-static const vm_pager_ops_t anon_pager_ops = {
-    .get_page = anon_get_page,
-    .put_page = NULL,
-    .cleanup  = NULL
-};
-
-// VNode pager
-
-static int vnode_get_page(vm_object_t *obj, uintptr_t offset, page_t **out_page)
-{
-    vnode_t *vn = (vnode_t *)obj->pager_data;
-
-    // Allocate a physical page to hold the file data.
-    page_t *page = pm_alloc(0);
-    if (!page)
-        return ENOMEM;
-
-    // Read from the vnode at the requested offset.
-    uint64_t read_count;
-    int err = vfs_read(vn, (void *)(page->addr + HHDM), ARCH_PAGE_GRAN, offset, &read_count);
-
-    if (err != EOK)
-    {
-        pm_free(page);
-        return EIO;
-    }
-
-    // Zero out the rest of the page.
-    if (read_count < ARCH_PAGE_GRAN)
-        memset((void *)(page->addr + HHDM + read_count), 0, ARCH_PAGE_GRAN - read_count);
-
-    *out_page = page;
-    return 0;
-}
-
-static int vnode_put_page([[maybe_unused]] vm_object_t *obj,
-                          [[maybe_unused]] page_t *page)
-{
-    /*
-     * Write a dirty page back to disk.
-     * Not supported yet.
-     */
-    return 0;
-}
-
-static void vnode_cleanup(vm_object_t *obj)
-{
-    // vnode_t *vn = (vnode_t *)obj->pager_data;
-    // if (vn)
-    //     vnode_ref_dec(vn);
-}
-
-const vm_pager_ops_t vnode_pager_ops = {
-    .get_page = vnode_get_page,
-    .put_page = vnode_put_page,
-    .cleanup  = vnode_cleanup
-};
 
 // Object helpers
 
@@ -123,15 +49,6 @@ vm_object_t *vm_object_create(vnode_t *vn, size_t size)
     }
 
     return obj;
-}
-
-void vm_object_destroy(vm_object_t *obj)
-{
-    ASSERT(obj);
-
-    //
-
-    heap_free(obj);
 }
 
 // Segment utils
@@ -268,14 +185,6 @@ int vm_map(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
         return ret;
     }
 
-    // Create or find the object.
-    vm_object_t *obj = vm_object_create(vn, length);
-    if (!obj)
-    {
-        spinlock_release(&as->slock);
-        return ENOMEM;
-    }
-
     // Initialize and insert the segment.
     vm_segment_t *seg = heap_alloc(sizeof(vm_segment_t));
     if (!seg)
@@ -288,6 +197,7 @@ int vm_map(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
         .length = length,
         .prot = prot,
         .flags = flags,
+        .vn = vn,
         .offset = offset
     };
     insert_seg(as, seg);
@@ -295,9 +205,21 @@ int vm_map(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
     for (size_t i = 0; i < length; i += ARCH_PAGE_GRAN)
     {
         page_t *page = NULL;
-        if (obj->pager->get_page(obj, offset + i, &page) != 0)
-            panic("Out of memory!");
-        xa_insert(&obj->pages, (offset + i) / ARCH_PAGE_GRAN, page);
+        if (vn)
+        {
+
+        }
+        else
+        {
+
+        }
+
+        if (!page)
+        {
+            heap_free(seg);
+            return ENOMEM;
+        }
+
         arch_paging_map_page(as->page_map, vaddr + i, page->addr, ARCH_PAGE_GRAN, prot);
     }
 

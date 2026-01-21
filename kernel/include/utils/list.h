@@ -36,15 +36,12 @@ list_t;
 bool list_is_empty(list_t *list);
 
 void list_insert_after(list_t *list, list_node_t *pos, list_node_t *new);
-
 void list_insert_before(list_t *list, list_node_t *pos, list_node_t *new);
 
 void list_append(list_t *list, list_node_t *node);
-
 void list_prepend(list_t *list, list_node_t *node);
 
 void list_remove(list_t *list, list_node_t *node);
 
 list_node_t *list_pop_head(list_t *list);
-
 list_node_t *list_pop_tail(list_t *list);

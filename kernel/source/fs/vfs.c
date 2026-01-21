@@ -1,6 +1,7 @@
 #include "fs/vfs.h"
 
 #include "arch/types.h"
+#include "assert.h"
 #include "fs/ramfs.h"
 #include "hhdm.h"
 #include "log.h"
@@ -123,8 +124,10 @@ static int get_page(vnode_t *vn, uint64_t pg_idx, bool read, page_t **out)
 int vfs_read(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count,
              uint64_t *out_bytes_read)
 {
-    if (!vn || !buffer)
-        return EINVAL;
+    ASSERT (vn && buffer && out_bytes_read);
+
+    if (!vn->ops || !vn->ops->read)
+        return ENOTSUP;
 
     uint64_t total_read = 0;
     while (total_read < count)
@@ -156,8 +159,10 @@ int vfs_read(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count,
 int vfs_write(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count,
               uint64_t *out_bytes_written)
 {
-    if (!vn || !buffer)
-        return EINVAL;
+    ASSERT (vn && buffer && out_bytes_written);
+
+    if (!vn->ops || !vn->ops->write)
+        return ENOTSUP;
 
     uint64_t total_written = 0;
     while (total_written < count)
@@ -194,6 +199,8 @@ int vfs_write(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count,
         *out_bytes_written = total_written;
     return EOK;
 }
+
+// Directory
 
 int vfs_lookup(const char *path, vnode_t **out_vn)
 {
@@ -262,12 +269,41 @@ int vfs_remove(const char *path)
     return parent->ops->remove(parent, child_name);
 }
 
-int vfs_ioctl(vnode_t *vn, uint64_t cmd, void *arg)
+// Misc
+
+int vfs_ioctl(vnode_t *vn, uint64_t cmd, void *args)
 {
-    if (!vn->ops->ioctl)
-        return ENOTTY;
-    return vn->ops->ioctl(vn, cmd, arg);
+    ASSERT (vn); // args can be NULL
+
+    if (!vn->ops || !vn->ops->ioctl)
+        return ENOTSUP;
+
+    return vn->ops->ioctl(vn, cmd, args);
 }
+
+int vfs_get_page(vnode_t *vn, uint64_t offset, page_t *out_page)
+{
+    ASSERT (vn && out_page);
+
+    if (!vn->ops || !vn->ops->get_page)
+        return ENOTSUP;
+
+    return vn->ops->get_page(vn, offset, out_page);
+}
+
+int vfs_sync(vnode_t *vn)
+{
+    ASSERT (vn);
+
+    if (!vn->ops || !vn->ops->get_page)
+        return ENOTSUP;
+
+    return vn->ops->sync(vn);
+}
+
+/*
+ * Initialization
+ */
 
 void vfs_init()
 {
