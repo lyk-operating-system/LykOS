@@ -37,23 +37,6 @@ static trie_node_t *find_child(trie_node_t *parent, const char *comp, size_t len
     return NULL;
 }
 
-static const char *next_component(const char *path, size_t *out_len)
-{
-    while (*path == '/')
-        path++;
-
-    if (!*path)
-        return NULL;
-
-    const char *start = path;
-    const char *end = start;
-    while (*end && *end != '/')
-        end++;
-
-    *out_len = end - start;
-    return start;
-}
-
 static char *vfs_get_mountpoint(const char *path, vnode_t **out)
 {
     trie_node_t *current = &trie_root;
@@ -80,6 +63,23 @@ static char *vfs_get_mountpoint(const char *path, vnode_t **out)
 
     *out = current->vfs->vfs_ops->get_root(current->vfs);
     return (char *)path;
+}
+
+static const char *next_component(const char *path, size_t *out_len)
+{
+    while (*path == '/')
+        path++;
+
+    if (!*path)
+        return NULL;
+
+    const char *start = path;
+    const char *end = start;
+    while (*end && *end != '/')
+        end++;
+
+    *out_len = end - start;
+    return start;
 }
 
 /*
@@ -281,24 +281,15 @@ int vfs_ioctl(vnode_t *vn, uint64_t cmd, void *args)
     return vn->ops->ioctl(vn, cmd, args);
 }
 
-int vfs_get_page(vnode_t *vn, uint64_t offset, page_t *out_page)
+int vfs_mmap(vnode_t *vn, vm_addrspace_t *as, uintptr_t vaddr, size_t length,
+             int prot, int flags, uint64_t offset)
 {
-    ASSERT (vn && out_page);
+    ASSERT (vn && as);
 
-    if (!vn->ops || !vn->ops->get_page)
+    if (!vn->ops || !vn->ops->mmap)
         return ENOTSUP;
 
-    return vn->ops->get_page(vn, offset, out_page);
-}
-
-int vfs_sync(vnode_t *vn)
-{
-    ASSERT (vn);
-
-    if (!vn->ops || !vn->ops->get_page)
-        return ENOTSUP;
-
-    return vn->ops->sync(vn);
+    return vn->ops->mmap(vn, as, vaddr, length, prot, flags, offset);
 }
 
 /*

@@ -2,24 +2,27 @@
 
 #include "mm/pm.h"
 #include "sync/spinlock.h"
-#include "uapi/errno.h"
 #include "utils/list.h"
 #include "utils/xarray.h"
 #include <stdatomic.h>
 #include <stdint.h>
 
+typedef struct vm_addrspace vm_addrspace_t;
+
+typedef struct vnode vnode_t;
+typedef struct vnode_ops vnode_ops_t;
+typedef struct vfs_dirent vfs_dirent_t;
+typedef struct vfs_ops vfs_ops_t;
+
 #define VFS_MAX_NAME_LEN 128
 #define VNODE_MAX_NAME_LEN 128
 #define PATH_MAX_NAME_LEN 256
 
-typedef struct vfs vfs_t;
-typedef struct vfs_ops vfs_ops_t;
-typedef struct vnode vnode_t;
-typedef struct vnode_ops vnode_ops_t;
+/*
+ * VFS Structure and Operations
+ */
 
-// VFS Structure and Operations
-
-struct vfs
+typedef struct
 {
     char *name;
     vfs_ops_t *vfs_ops;
@@ -29,14 +32,17 @@ struct vfs
     void *private_data;
 
     list_node_t list_node;
-};
+}
+vfs_t;
 
 struct vfs_ops
 {
     vnode_t *(*get_root)(vfs_t *vfs);
 };
 
-// VNode structure and operations
+/*
+ * VNode structure and operations
+ */
 
 typedef enum
 {
@@ -74,13 +80,12 @@ struct vnode
     spinlock_t slock;
 };
 
-typedef struct
+struct vfs_dirent
 {
     char name[VNODE_MAX_NAME_LEN + 1];
     vnode_type_t type;
     // TODO: Add other fields
-}
-vfs_dirent_t;
+};
 
 /**
  * @brief Increment vnode reference count.
@@ -129,8 +134,9 @@ struct vnode_ops
     int (*rmdir)  (vnode_t *vn, const char *name);
     int (*readdir)(vnode_t *vn, vfs_dirent_t **out_entries, size_t *out_count);
     // Misc
-    int (*ioctl)   (vnode_t *vn, uint64_t cmd, void *args);
-    int (*get_page)(vnode_t *vn, uint64_t offset, page_t **out_page);
+    int (*ioctl)(vnode_t *vn, uint64_t cmd, void *args);
+    int (*mmap) (vnode_t *vn, vm_addrspace_t *as, uintptr_t vaddr, size_t length,
+                 int prot, int flags, uint64_t offset);
 };
 
 /*
@@ -146,8 +152,8 @@ struct vnode_ops
 [[nodiscard]] int vfs_remove(const char *path);
 // Misc
 [[nodiscard]] int vfs_ioctl(vnode_t *vn, uint64_t cmd, void *args);
-[[nodiscard]] int vfs_get_page(vnode_t *vn, uint64_t offset, page_t *out_page);
-[[nodiscard]] int vfs_sync(vnode_t *vn);
+[[nodiscard]] int vfs_mmap(vnode_t *vn, vm_addrspace_t *as, uintptr_t vaddr,
+                           size_t length, int prot, int flags, uint64_t offset);
 
 /*
  * Initialization

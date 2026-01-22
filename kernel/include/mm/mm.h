@@ -11,7 +11,7 @@
 #define MM_PROT_EXEC    0x4
 #define MM_PROT_FULL    (MM_PROT_WRITE | MM_PROT_USER | MM_PROT_EXEC)
 
-void *memcpy(void *dest, const void *src, size_t n);
+void *memcpy(void *restrict dest, const void *restrict src, size_t n);
 
 void *memmove(void *dest, const void *src, size_t n);
 

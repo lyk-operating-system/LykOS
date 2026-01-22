@@ -107,9 +107,9 @@ int memcmp(const void *s1, const void *s2, size_t n)
     return 0;
 }
 
-void *memset(void *restrict dest, int c, size_t n)
+void *memset(void *dest, int c, size_t n)
 {
-    uint8_t *restrict p = dest;
+    uint8_t *p = dest;
     size_t v = (uint8_t)c;
 
     size_t shift = 8;

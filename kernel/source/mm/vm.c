@@ -3,6 +3,7 @@
 #include "arch/types.h"
 #include "assert.h"
 #include "bootreq.h"
+#include "fs/vfs.h"
 #include "hhdm.h"
 #include "log.h"
 #include "mm/heap.h"
@@ -20,36 +21,6 @@
  */
 
 vm_addrspace_t *vm_kernel_as;
-
-// Object helpers
-
-vm_object_t *vm_object_create(vnode_t *vn, size_t size)
-{
-    vm_object_t *obj = heap_alloc(sizeof(vm_object_t));
-    if (!obj)
-        return NULL;
-
-    *obj = (vm_object_t) {
-        .size = size,
-        .pages = XARRAY_INIT,
-        .shadow = NULL,
-        .refcount = 1,
-        .slock = SPINLOCK_INIT
-    };
-
-    if (vn)
-    {
-        obj->pager = &vnode_pager_ops;
-        obj->pager_data = vn;
-    }
-    else // Anonymous memory
-    {
-        obj->pager = &anon_pager_ops;
-        obj->pager_data = NULL;
-    }
-
-    return obj;
-}
 
 // Segment utils
 
@@ -204,23 +175,24 @@ int vm_map(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
 
     for (size_t i = 0; i < length; i += ARCH_PAGE_GRAN)
     {
-        page_t *page = NULL;
-        if (vn)
+        if (vn) // VNode backed
         {
-
+            if (vn->ops && vn->ops->mmap)
+                return vn->ops->mmap(vn, as, vaddr, length, prot, flags, offset);
+            else
+                return ENOTSUP;
         }
-        else
+        else // Anon
         {
+            page_t *page = pm_alloc(0);
+            if (!page)
+            {
+                heap_free(seg);
+                return ENOMEM;
+            }
 
+            arch_paging_map_page(as->page_map, vaddr + i, page->addr, ARCH_PAGE_GRAN, prot);
         }
-
-        if (!page)
-        {
-            heap_free(seg);
-            return ENOMEM;
-        }
-
-        arch_paging_map_page(as->page_map, vaddr + i, page->addr, ARCH_PAGE_GRAN, prot);
     }
 
     spinlock_release(&as->slock);

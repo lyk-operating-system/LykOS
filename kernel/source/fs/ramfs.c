@@ -15,20 +15,6 @@
 
 #define INITIAL_PAGE_CAPACITY 1
 
-typedef struct ramfs_node ramfs_node_t;
-
-struct ramfs_node
-{
-    vnode_t vn;
-
-    ramfs_node_t *parent;
-    list_t children;
-    xarray_t pages;
-    size_t page_count;
-
-    list_node_t list_node;
-};
-
 // VFS API
 
 static vnode_t *ramfs_get_root(vfs_t *self);
@@ -194,7 +180,7 @@ static int create(vnode_t *self, const char *name, vnode_type_t t, vnode_t **out
 static int remove(vnode_t *self, const char *name)
 {
     ramfs_node_t *current = (ramfs_node_t *)self;
-    
+
     FOREACH(n, current->children)
     {
         ramfs_node_t *child = LIST_GET_CONTAINER(n, ramfs_node_t, list_node);
@@ -211,7 +197,7 @@ static int remove(vnode_t *self, const char *name)
             return EOK;
         }
     }
-    
+
     return ENOENT;
 }
 
@@ -232,10 +218,10 @@ static int readdir(vnode_t *self, vfs_dirent_t **out_entries, size_t *out_count)
         self->atime = arch_clock_get_unix_time();
         return EOK;
     }
-    
-    vfs_dirent_t *entries = heap_alloc(entry_count * sizeof(vfs_dirent_t));    
+
+    vfs_dirent_t *entries = heap_alloc(entry_count * sizeof(vfs_dirent_t));
     size_t index = 0;
-    
+
     FOREACH(n, dir->children)
     {
         ramfs_node_t *child = LIST_GET_CONTAINER(n, ramfs_node_t, list_node);
@@ -243,7 +229,7 @@ static int readdir(vnode_t *self, vfs_dirent_t **out_entries, size_t *out_count)
         entries[index].type = child->vn.type;
         index++;
     }
-    
+
     self->atime = arch_clock_get_unix_time();
     *out_entries = entries;
     *out_count = entry_count;

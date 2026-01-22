@@ -1,13 +1,12 @@
 #pragma once
 
 #include "arch/paging.h"
-#include "fs/vfs.h"
-#include "mm/pm.h"
 #include "sync/spinlock.h"
 #include "utils/list.h"
-#include "utils/xarray.h"
 #include <stddef.h>
 #include <stdint.h>
+
+typedef struct vnode vnode_t;
 
 #define VM_MAP_PRIVATE         0x01
 #define VM_MAP_SHARED          0x02
@@ -31,7 +30,7 @@ typedef struct
 }
 vm_segment_t;
 
-typedef struct
+typedef struct vm_addrspace
 {
     list_t segments;
     arch_paging_map_t *page_map;
