@@ -8,6 +8,7 @@
 #include "proc/init.h"
 #include "proc/sched.h"
 #include "proc/smp.h"
+#include "uapi/errno.h"
 #include "utils/string.h"
 #include <stddef.h>
 #include <stdint.h>

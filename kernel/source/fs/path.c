@@ -177,9 +177,9 @@ bool path_join(const char *a, const char *b, char *out, size_t *out_len)
     return true;
 }
 
-void path_next_component(const char *path, char *out, size_t *out_len)
+const char *path_next_component(const char *path, char *out, size_t *out_len)
 {
-    while (*path == '/')
+    while (*path && *path == '/')
         path++;
 
     const char *start = path;
@@ -193,4 +193,6 @@ void path_next_component(const char *path, char *out, size_t *out_len)
         memcpy(out, start, *out_len);
         out[*out_len] = '\0';
     }
+
+    return end;
 }

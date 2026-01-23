@@ -2,6 +2,7 @@
 
 #include "arch/types.h"
 #include "assert.h"
+#include "fs/path.h"
 #include "fs/ramfs.h"
 #include "hhdm.h"
 #include "log.h"
@@ -11,6 +12,7 @@
 #include "utils/list.h"
 #include "utils/math.h"
 #include "utils/string.h"
+#include "uapi/errno.h"
 
 typedef struct trie_node trie_node_t;
 
@@ -204,21 +206,22 @@ int vfs_write(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count,
 
 int vfs_lookup(const char *path, vnode_t **out_vn)
 {
+    ASSERT(path_is_absolute(path));
+
     vnode_t *curr;
     path = vfs_get_mountpoint(path, &curr);
-    const char *comp;
+
+    char comp[PATH_MAX + 1];
     size_t comp_len;
-
-    while (curr && (comp = next_component(path, &comp_len)))
+    while (curr)
     {
-        char name_buf[VFS_MAX_NAME_LEN + 1];
-        memcpy(name_buf, comp, comp_len);
-        name_buf[comp_len] = '\0';
+        if (!*path)
+            break;
 
-        if (curr->ops->lookup(curr, name_buf, &curr) != EOK)
+        path = path_next_component(path, comp, &comp_len);
+
+        if (curr->ops->lookup(curr, comp, &curr) != EOK)
             return ENOENT;
-
-        path = comp + comp_len;
     }
 
     *out_vn = curr;
@@ -227,46 +230,42 @@ int vfs_lookup(const char *path, vnode_t **out_vn)
 
 int vfs_create(const char *path, vnode_type_t type, vnode_t **out)
 {
-    const char *last_slash = strrchr(path, '/');
-    char parent_path[PATH_MAX_NAME_LEN];
-    char child_name[VFS_MAX_NAME_LEN + 1];
+    ASSERT(path_is_absolute(path));
 
-    size_t parent_len = last_slash - path ?: 1;
-    strncpy(parent_path, path, parent_len);
-    parent_path[parent_len] = '\0';
+    char dirname[PATH_MAX];
+    char basename[PATH_MAX];
+    size_t dirname_len;
+    size_t basename_len;
 
-    strcpy(child_name, last_slash + 1);
+    path_split(path, dirname, &dirname_len, basename, &basename_len);
+
+    log(LOG_DEBUG, "%s-%s", dirname, basename);
 
     vnode_t *parent;
-    int ret = vfs_lookup(parent_path, &parent);
+    int ret = vfs_lookup(dirname, &parent);
     if (ret != EOK)
-    {
-        ret = vfs_create(parent_path, VDIR, &parent);
-        if (ret != EOK)
-            return ret;
-    }
+        return ret;
 
-    return parent->ops->create(parent, child_name, type, out);
+    return parent->ops->create(parent, basename, type, out);
 }
 
 int vfs_remove(const char *path)
 {
-    const char *last_slash = strrchr(path, '/');
-    char parent_path[PATH_MAX_NAME_LEN];
-    char child_name[VFS_MAX_NAME_LEN + 1];
+    ASSERT(path_is_absolute(path));
 
-    size_t parent_len = last_slash - path ?: 1;
-    strncpy(parent_path, path, parent_len);
-    parent_path[parent_len] = '\0';
+    char dirname[PATH_MAX];
+    char basename[PATH_MAX];
+    size_t dirname_len;
+    size_t basename_len;
 
-    strcpy(child_name, last_slash + 1);
+    path_split(path, dirname, &dirname_len, basename, &basename_len);
 
     vnode_t *parent;
-    int ret = vfs_lookup(parent_path, &parent);
+    int ret = vfs_lookup(dirname, &parent);
     if (ret != EOK)
         return ret;
 
-    return parent->ops->remove(parent, child_name);
+    return parent->ops->remove(parent, basename);
 }
 
 // Misc

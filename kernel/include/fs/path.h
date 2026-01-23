@@ -2,7 +2,7 @@
 
 #include <stddef.h>
 
-#define PATH_MAX 4096
+#define PATH_MAX 512
 
 /**
  * @brief
@@ -44,5 +44,7 @@ bool path_join(const char *a, const char *b, char *out, size_t *out_len);
 
 /**
  * @brief Fetch the next component in a path for iterative walking.
+ *
+ * @return Pointer to the next character following the extracted component.
  */
-void path_next_component(const char *path, char *out, size_t *out_len);
+const char *path_next_component(const char *path, char *out, size_t *out_len);

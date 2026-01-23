@@ -1,18 +1,17 @@
 #include "fs/ustar.h"
 
-#include <stddef.h>
-#include <stdint.h>
-
-#include "log.h"
-#include "panic.h"
-#include "mm/heap.h"
-#include "mm/mm.h"
-
-#include "utils/printf.h"
-#include "utils/string.h"
-
+#include "fs/path.h"
 #include "fs/ramfs.h"
 #include "fs/vfs.h"
+#include "log.h"
+#include "mm/heap.h"
+#include "mm/mm.h"
+#include "panic.h"
+#include "uapi/errno.h"
+#include "utils/printf.h"
+#include "utils/string.h"
+#include <stddef.h>
+#include <stdint.h>
 
 #define USTAR_BLOCK_SIZE 512
 
@@ -82,16 +81,17 @@ int ustar_extract(const void *archive, uint64_t archive_size, const char *dest_p
         offset += USTAR_BLOCK_SIZE;
 
         // build dest_path + archive
-        char entry_path[PATH_MAX_NAME_LEN];
+        char entry_path[PATH_MAX];
         if (header->prefix[0] != '\0')
             snprintf(entry_path, sizeof(entry_path), "%s%s", header->prefix, header->name);
         else
             snprintf(entry_path, sizeof(entry_path), "%s", header->name);
 
-        char full_path[PATH_MAX_NAME_LEN];
+        char full_path[PATH_MAX];
         size_t base_len = strlen(dest_path);
         int needs_slash = base_len && dest_path[base_len - 1] != '/';
         snprintf(full_path, sizeof(full_path), "%s%s%s", dest_path, needs_slash ? "/" : "", entry_path);
+        path_canonicalize(full_path, full_path);
 
         switch (header->typeflag)
         {

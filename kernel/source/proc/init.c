@@ -7,6 +7,7 @@
 #include "mm/vm.h"
 #include "proc/proc.h"
 #include "proc/thread.h"
+#include "uapi/errno.h"
 #include "utils/elf.h"
 #include "utils/math.h"
 #include <stddef.h>

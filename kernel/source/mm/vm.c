@@ -212,7 +212,6 @@ int vm_unmap(vm_addrspace_t *as, uintptr_t vaddr, size_t length)
         {
             for (size_t i = 0; i < seg->length; i += ARCH_PAGE_GRAN)
                 arch_paging_unmap_page(as->page_map, seg->start + i);
-            vm_object_destroy(seg->object); // This handles freeing physical memory.
 
             list_remove(&as->segments, n);
             heap_free(seg);

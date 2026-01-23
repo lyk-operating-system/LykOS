@@ -6,6 +6,7 @@
 #include "arch/timer.h"
 #include "log.h"
 #include "proc/sched.h"
+#include "uapi/errno.h"
 #include <stdint.h>
 
 sys_ret_t syscall_exit(int code)
