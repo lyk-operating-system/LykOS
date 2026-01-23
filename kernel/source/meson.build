@@ -1,4 +1,5 @@
 subdir('arch/' + arch)
+subdir('crypto')
 subdir('dev')
 subdir('fs')
 subdir('gfx')
