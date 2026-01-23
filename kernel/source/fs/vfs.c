@@ -2,6 +2,7 @@
 
 #include "arch/types.h"
 #include "assert.h"
+#include "fs/mount.h"
 #include "fs/path.h"
 #include "fs/ramfs.h"
 #include "hhdm.h"
@@ -12,77 +13,6 @@
 #include "utils/list.h"
 #include "utils/math.h"
 #include "utils/string.h"
-#include "uapi/errno.h"
-
-typedef struct trie_node trie_node_t;
-
-struct trie_node
-{
-    char *comp;
-    vfs_t *vfs;
-    vnode_t *mount_vn;
-
-    trie_node_t *children[16];
-    size_t children_cnt;
-};
-
-static list_t vfs_list = LIST_INIT;
-static trie_node_t trie_root;
-
-// Utils and mountpoint
-
-static trie_node_t *find_child(trie_node_t *parent, const char *comp, size_t length)
-{
-    for (size_t i = 0; i < parent->children_cnt; i++)
-        if (strncmp(parent->children[i]->comp, comp, length) == 0)
-            return parent->children[i];
-    return NULL;
-}
-
-static char *vfs_get_mountpoint(const char *path, vnode_t **out)
-{
-    trie_node_t *current = &trie_root;
-
-    while (*path)
-    {
-        while(*path == '/')
-            path++;
-        char *slash = strchr(path, '/');
-        size_t length;
-        if (slash)
-            length = slash - path;
-        else
-            length = UINT64_MAX;
-
-        trie_node_t *child = find_child(current, path, length);
-        if (child)
-            current = child;
-        else
-            break;
-
-        path += strlen(child->comp);
-    }
-
-    *out = current->vfs->vfs_ops->get_root(current->vfs);
-    return (char *)path;
-}
-
-static const char *next_component(const char *path, size_t *out_len)
-{
-    while (*path == '/')
-        path++;
-
-    if (!*path)
-        return NULL;
-
-    const char *start = path;
-    const char *end = start;
-    while (*end && *end != '/')
-        end++;
-
-    *out_len = end - start;
-    return start;
-}
 
 /*
  * Veneer layer.
@@ -208,8 +138,8 @@ int vfs_lookup(const char *path, vnode_t **out_vn)
 {
     ASSERT(path_is_absolute(path));
 
-    vnode_t *curr;
-    path = vfs_get_mountpoint(path, &curr);
+    vfsmount_t *vfsmount = find_mount(path, &path);
+    vnode_t *curr = vfsmount->vfs->vfs_ops->get_root(vfsmount->vfs);
 
     char comp[PATH_MAX + 1];
     size_t comp_len;
@@ -238,8 +168,6 @@ int vfs_create(const char *path, vnode_type_t type, vnode_t **out)
     size_t basename_len;
 
     path_split(path, dirname, &dirname_len, basename, &basename_len);
-
-    log(LOG_DEBUG, "%s-%s", dirname, basename);
 
     vnode_t *parent;
     int ret = vfs_lookup(dirname, &parent);
@@ -298,16 +226,10 @@ int vfs_mmap(vnode_t *vn, vm_addrspace_t *as, uintptr_t vaddr, size_t length,
 void vfs_init()
 {
     vfs_t *ramfs = ramfs_create();
+    if (!ramfs)
+        panic("Failed to crate root ramfs!");
 
-    list_append(&vfs_list, &ramfs->list_node);
-
-    trie_root = (trie_node_t) {
-        .comp = strdup("/"),
-        .vfs = ramfs,
-        .mount_vn = NULL,
-        .children = { 0 },
-        .children_cnt = 0
-    };
+    mount_init(ramfs);
 
     log(LOG_INFO, "VFS initialized.");
 }
