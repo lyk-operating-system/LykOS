@@ -1,5 +1,5 @@
 #pragma once
 
-#include "bootreq.h"
+#include <stdint.h>
 
-#define HHDM (bootreq_hhdm.response->offset)
+extern uintptr_t HHDM;

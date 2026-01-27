@@ -1,4 +1,3 @@
-#include "log.h"
 #include "mod/module.h"
 
 #include "dev/acpi/acpi.h"

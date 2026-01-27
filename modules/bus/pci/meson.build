@@ -1,9 +1,9 @@
 cc = meson.get_compiler('c')
 
 custom_target(
-    'test_module',
+    'pci',
     input: ['main.c'],
-    output: ['test_module.o'],
+    output: ['pci.o'],
     command: [
         cc.cmd_array(),
         c_flags,

@@ -1,4 +1,5 @@
 #include "arch/lcpu.h"
+#include "bootreq.h"
 #include "dev/acpi/acpi.h"
 #include "gfx/simplefb.h"
 #include "log.h"
@@ -10,6 +11,9 @@
 
 #include "arch/aarch64/devices/gic.h"
 #include "arch/aarch64/int.h"
+#include <stdint.h>
+
+uintptr_t HHDM;
 
 [[noreturn]] extern void kernel_main();
 
@@ -24,6 +28,7 @@ static thread_t early_thread = (thread_t) {
 
 void __entry()
 {
+    HHDM = bootreq_hhdm.response->offset;
     // Load pseudo-thread
     arch_lcpu_thread_reg_write((size_t)&early_thread.context);
 
