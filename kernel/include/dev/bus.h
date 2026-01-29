@@ -19,7 +19,7 @@ typedef struct bus
 
     bool (*register_device)(struct device *dev);
     bool (*remove_device)(struct device *dev);
-    bool (*register_driver)(struct device *drv);
+    bool (*register_driver)(struct driver *drv);
     bool (*remove_driver)(struct driver *drv);
     bool (*match)(struct device *dev, struct driver *drv);
 
