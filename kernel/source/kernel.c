@@ -1,4 +1,6 @@
 #include "bootreq.h"
+#include "dev/virtual.h"
+#include "fs/devfs.h"
 #include "fs/ustar.h"
 #include "fs/vfs.h"
 #include "log.h"
@@ -85,6 +87,9 @@ static void load_init_proc()
 void kernel_main()
 {
     vfs_init();
+
+    devfs_init();
+    virtual_devices_init();
 
     load_initrd();
     load_boot_modules();

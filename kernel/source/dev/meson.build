@@ -1,5 +1,6 @@
 subdir('acpi')
+subdir('virtual')
 
 c_files += files(
-    'device.c',
+    'bus.c',
 )

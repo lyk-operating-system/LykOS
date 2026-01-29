@@ -1,10 +1,12 @@
 #include "fs/devfs.h"
 
+#include "fs/mount.h"
 #include "fs/ramfs.h"
 #include "log.h"
 #include "mm/heap.h"
-#include "utils/string.h"
+#include "panic.h"
 #include "uapi/errno.h"
+#include "utils/string.h"
 
 bool devfs_register_device(const char *path, vnode_type_t type,
                            vnode_ops_t *ops, void *priv_data)
@@ -16,7 +18,7 @@ bool devfs_register_device(const char *path, vnode_type_t type,
         return false;
 
     vn->ops = ops;
-    vn->inode = priv_data;
+    // vn->inode = priv_data;
     return true;
 }
 
@@ -35,6 +37,9 @@ void devfs_init()
     vfs_t *devfs = ramfs_create();
     heap_free(devfs->name);
     devfs->name = strdup("devfs");
+
+    if (mount("/dev", devfs, 0) != EOK)
+        panic("Could not mount /devfs !");
 
     log(LOG_INFO, "DevFS initialized and mounted at /devfs");
 }
