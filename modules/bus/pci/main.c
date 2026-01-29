@@ -2,27 +2,70 @@
 
 #include "dev/acpi/acpi.h"
 #include "dev/acpi/tables/mcfg.h"
+#include "dev/bus.h"
 #include "dev/bus/pci.h"
 #include "dev/device.h"
+#include "dev/driver.h"
 #include "hhdm.h"
+#include "mm/heap.h"
 #define LOG_PREFIX "PCI"
 #include "log.h"
 #include "utils/printf.h"
 
-static device_class_t pci_class_to_device_class(uint8_t class)
+static bool register_driver(driver_t *drv);
+
+static bus_t pci_bus = {
+    .name = "pci",
+    .bridge = NULL,
+    .devices = LIST_INIT,
+    .drivers = LIST_INIT,
+    .register_driver = register_driver
+};
+
+static bool register_driver(driver_t *drv)
 {
-    switch (class)
+    spinlock_acquire(&pci_bus.slock);
+
+    if (drv->probe)
     {
-        case 0x01: // Mass Storage
-            return DEVICE_CLASS_BLOCK;
-        case 0x02: // Network Controller
-            return DEVICE_CLASS_NETWORK;
-        case 0x09: // Input Device
-            return DEVICE_CLASS_INPUT;
-        default:
-            return DEVICE_CLASS_UNKNOWN;
+        FOREACH (n, pci_bus.devices)
+        {
+            device_t *dev = LIST_GET_CONTAINER(n, device_t, list_node);
+
+            if (!dev->driver)
+                drv->probe(dev);
+        }
     }
+
+    spinlock_release(&pci_bus.slock);
+    return true;
 }
+
+// Helper
+
+static void pci_create_device(pci_header_common_t *pci_hdr)
+{
+    char *name = heap_alloc(32);
+    snprintf(
+        name, 32,
+        "%04X:%04X-%02X:%02X:%02X",
+        pci_hdr->vendor_id, pci_hdr->device_id,
+        pci_hdr->class, pci_hdr->subclass, pci_hdr->prog_if
+    );
+
+    device_t *dev = heap_alloc(sizeof(device_t));
+    *dev = (device_t) {
+        .name = name,
+        .bus = &pci_bus,
+        .bus_data = pci_hdr,
+    };
+    ref_init(&dev->refcount);
+    list_append(&pci_bus.devices, &dev->list_node);
+
+    log(LOG_DEBUG, "Registered device: %s", name);
+}
+
+//
 
 void __module_install()
 {
@@ -33,8 +76,7 @@ void __module_install()
         return;
     }
 
-    bus_t *bus_pci = bus_register("pci", NULL, NULL);
-    if (!bus_pci)
+    if (!bus_register(&pci_bus))
     {
         log(LOG_ERROR, "Could not register the PCI bus!");
         return;
@@ -55,29 +97,19 @@ void __module_install()
             if (pci_hdr->vendor_id == 0xFFFF)
                 continue;
 
-            char name[64];
-            snprintf(
-                name, sizeof(name),
-                "%04X:%04X-%02X:%02X:%02X",
-                pci_hdr->vendor_id, pci_hdr->device_id,
-                pci_hdr->class, pci_hdr->subclass, pci_hdr->prog_if
-            );
-
-            device_t *dev = device_register(
-                bus_pci,
-                name,
-                pci_class_to_device_class(pci_hdr->class),
-                pci_hdr
-            );
-            if (dev)
-                log(LOG_DEBUG, "Registered device: %s", name);
+            pci_create_device(pci_hdr);
         }
     }
 
     log(LOG_INFO, "Successfully listed devices.");
 }
 
+void __module_destroy()
+{
+    log(LOG_INFO, "Module destroyed.");
+}
+
 MODULE_NAME("PCI")
 MODULE_VERSION("0.1.0")
-MODULE_DESCRIPTION("PCI bus enumeration and probing.")
+MODULE_DESCRIPTION("PCI bus enumeration.")
 MODULE_AUTHOR("Matei Lupu")
