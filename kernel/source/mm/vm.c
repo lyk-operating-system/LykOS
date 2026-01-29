@@ -89,6 +89,19 @@ static void insert_seg(vm_addrspace_t *as, vm_segment_t *seg)
         list_prepend(&as->segments, &seg->list_node);
 }
 
+static vm_segment_t *find_seg(vm_addrspace_t *as, uintptr_t addr)
+{
+    FOREACH(n, as->segments)
+    {
+        vm_segment_t *seg = LIST_GET_CONTAINER(n, vm_segment_t, list_node);
+
+        if (seg->start <= addr && addr - seg->start < seg->length)
+            return seg;
+    }
+
+    return NULL;
+}
+
 // Page fault handler
 
 static bool page_fault(vm_addrspace_t *as, uintptr_t virt)
@@ -225,7 +238,43 @@ int vm_unmap(vm_addrspace_t *as, uintptr_t vaddr, size_t length)
     return ENOENT;
 }
 
-// Userspace utils
+/*
+ * Memory allocation
+ */
+
+typedef struct
+{
+    size_t obj_size;
+}
+vm_alloc_hdr_t;
+
+void *vm_alloc(size_t size)
+{
+    size = CEIL(size + sizeof(vm_alloc_hdr_t), ARCH_PAGE_GRAN);
+
+    spinlock_acquire(&vm_kernel_as->slock);
+
+    uintptr_t out = 0;
+    vm_map(vm_kernel_as, 0, size, MM_PROT_WRITE, VM_MAP_ANON | VM_MAP_POPULATE, NULL, 0, &out);
+
+    spinlock_release(&vm_kernel_as->slock);
+
+    return out ? (void *)out : NULL;
+}
+
+void vm_free(void *obj)
+{
+    spinlock_acquire(&vm_kernel_as->slock);
+
+    vm_segment_t *seg = find_seg(vm_kernel_as, (uintptr_t)obj);
+    vm_unmap(vm_kernel_as, (uintptr_t)obj, seg->length);
+
+    spinlock_release(&vm_kernel_as->slock);
+}
+
+/*
+ * Userspace utils
+ */
 
 size_t vm_copy_to_user(vm_addrspace_t *dest_as, uintptr_t dest, const void *src, size_t count)
 {

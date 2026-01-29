@@ -53,6 +53,11 @@ int vm_map(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
            uintptr_t *out);
 int vm_unmap(vm_addrspace_t *as, uintptr_t vaddr, size_t length);
 
+// Memory allocation
+
+void *vm_alloc(size_t size);
+void vm_free(void *obj);
+
 // Userspace utils
 
 size_t vm_copy_to_user(vm_addrspace_t *dest_as, uintptr_t dest, const void *src, size_t count);
