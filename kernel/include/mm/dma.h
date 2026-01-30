@@ -1,4 +1,5 @@
 #include "mm/pm.h"
+#include "hhdm.h"
 
 uintptr_t dma_phys_addr(void *virt);
 
