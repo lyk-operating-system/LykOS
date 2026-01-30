@@ -5,16 +5,11 @@ project(
     meson_version: '>=0.64.0',
 )
 
-add_project_link_arguments(
-    '-static',
-    language: 'nasm',
-)
-
-add_languages('nasm')
-
 executable(
     'init',
     'init.c',
+    link_args: ['-static', '-no-pie'],
+    pie: false,
     install: true,
     install_dir: 'bin',
 )
