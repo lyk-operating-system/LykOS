@@ -1,10 +1,7 @@
 #include "nvme.h"
 #include "mm/heap.h"
 #include "dev/bus/pci.h"
-#include "mm/pm.h"
-#include <stddef.h>
-#include <stdint.h>
-#include <string.h>
+#include "mm/mm.h"
 
 // --- HELPERS ---
 
