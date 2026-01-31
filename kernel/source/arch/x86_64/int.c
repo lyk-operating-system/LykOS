@@ -34,6 +34,9 @@ void arch_int_handler(cpu_state_t *cpu_state)
         {
             case 0: // PIT
                 break;
+            case 1: // PS/2
+
+                break;
             case 2: // LAPIC Timer
                 arch_timer_handler();
                 break;
