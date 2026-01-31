@@ -51,7 +51,6 @@ nasm_flags = [
 ld_flags = [
     '-nostdlib',
     '-static',
-    '-gc-sections',
     '-z', 'max-page-size=0x1000',
     '-g',
     '-T', meson.current_source_dir() / f'linker-scripts/@arch@.ld',
