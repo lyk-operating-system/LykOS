@@ -121,8 +121,8 @@ static void nvme_admin_wait_completion(nvme_t *nvme, uint16_t cid)
 
 static void nvme_identify_controller(nvme_t *nvme)
 {
-    nvme->identity = (nvme_id_t *)dma_map(sizeof(nvme_id_t));
-    memset((void *)nvme->identity, 0, sizeof(nvme_id_t));
+    nvme->identity = (nvme_cid_t *)dma_map(sizeof(nvme_cid_t));
+    memset((void *)nvme->identity, 0, sizeof(nvme_cid_t));
 
     nvme_command_t cmd = {0};
     cmd.dptr.prp1 = dma_phys_addr((void *)nvme->identity);
@@ -130,6 +130,11 @@ static void nvme_identify_controller(nvme_t *nvme)
 
     nvme_submit_admin_command(nvme, 0x06, 1, cmd); // opcode 0x06 = Identify
     nvme_admin_wait_completion(nvme, 1);
+}
+
+static void nvme_identify_namespace(nvme_t *nvme)
+{
+    nvme->
 }
 
 // --- INIT ---

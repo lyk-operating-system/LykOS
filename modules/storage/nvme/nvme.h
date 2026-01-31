@@ -6,6 +6,8 @@
 #include "mm/dma.h"
 #include "mm/vm.h"
 #include "hhdm.h"
+#include "sync/spinlock.h"
+#include <stdint.h>
 
 #define NVME_ADMIN_QUEUE_DEPTH 64
 
@@ -16,6 +18,8 @@
 #define NVME_CQ_HDBL(base, qid, stride) \
     (*(volatile uint32_t *)((uintptr_t)(base) + 0x1000 + (2 * (qid) + 1) * (stride)))
 
+// --- ID STRUCTS ---
+// controller identification struct
 typedef volatile struct
 {
     uint16_t vid; // PCI vendor id
@@ -40,8 +44,53 @@ typedef volatile struct
     uint32_t nn; // number of namespaces
 }
 __attribute__((packed))
-nvme_id_t;
+nvme_cid_t;
 
+typedef volatile struct
+{
+	uint64_t nsze;
+	uint64_t ncap;
+	uint64_t nuse;
+	uint8_t nsfeat;
+	uint8_t nlbaf;
+	uint8_t flbas;
+	uint8_t mc;
+	uint8_t dpc;
+	uint8_t dps;
+	uint8_t nmic;
+	uint8_t rescap;
+	uint8_t fpi;
+	uint8_t dlfeat;
+	uint16_t nawun;
+	uint16_t nawupf;
+	uint16_t nacwu;
+	uint16_t nabsn;
+	uint16_t nabo;
+	uint16_t nabspf;
+	uint16_t noiob;
+	uint64_t nvmcap[2];
+	uint16_t npwg;
+	uint16_t npwa;
+	uint16_t npdg;
+	uint16_t npda;
+	uint16_t nows;
+	uint16_t mssrl;
+	uint32_t mcl;
+	uint8_t msrc;
+	uint8_t __reserved0[11];
+	uint32_t adagrpid;
+	uint8_t __reserved1[3];
+	uint8_t nsattr;
+	uint16_t nvmsetid;
+	uint16_t endgid;
+	uint64_t nguid[2];
+	uint64_t eui64;
+	uint32_t lbafN[64];
+	uint8_t vendor_specific[3712];
+}
+__attribute__((packed))
+nvme_nsid_t;
+static_assert(sizeof(nvme_nsid_t) == 4096);
 
 // Register stuff
 /* source: https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-Revision-2.3-2025.08.01-Ratified.pdf
@@ -161,7 +210,7 @@ typedef struct
 __attribute__((packed))
 nvme_command_t;
 
-STATIC_ASSERT(sizeof(nvme_command_t) == 15 * sizeof(uint32_t));
+static_assert(sizeof(nvme_command_t) == 15 * sizeof(uint32_t));
 
 // --- QUEUE ENTRIES ---
 // Submission queue entry
@@ -179,7 +228,7 @@ typedef struct
 __attribute__((packed))
 nvme_sq_entry_t;
 
-STATIC_ASSERT(sizeof(nvme_sq_entry_t) == 64);
+static_assert(sizeof(nvme_sq_entry_t) == 64);
 
 // Completion queue entry
 typedef struct
@@ -197,7 +246,7 @@ typedef struct
 __attribute__((packed))
 nvme_cq_entry_t;
 
-STATIC_ASSERT(sizeof(nvme_cq_entry_t) == 16);
+static_assert(sizeof(nvme_cq_entry_t) == 16);
 // -----
 
 // Queue
@@ -211,6 +260,8 @@ typedef struct
     uint16_t head;
     uint16_t tail;
     uint8_t phase;
+
+    spinlock_t lock;
 }
 __attribute__((packed))
 nvme_queue_t;
@@ -224,13 +275,24 @@ typedef struct
     nvme_queue_t *admin_queue;
     nvme_queue_t *io_queue;
 
-    nvme_id_t *identity;
+    nvme_cid_t *identity;
 }
 __attribute__((packed))
 nvme_t;
 
+typedef struct
+{
+    nvme_t* controller;
+    uint32_t nsid;
+
+    uint64_t lba_count;
+    uint32_t lba_size;
+}
+__attribute__((packed))
+nvme_namespace_t;
 
 // --- FUNCTIONS ---
 void nvme_reset(nvme_t *nvme);
 void nvme_start(nvme_t *nvme);
+
 void nvme_init(pci_header_type0_t *header);
