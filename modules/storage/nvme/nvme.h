@@ -7,7 +7,8 @@
 #include "mm/vm.h"
 #include "hhdm.h"
 #include "sync/spinlock.h"
-#include <stdint.h>
+#include "dev/storage/drive.h"
+#include "utils/string.h"
 
 #define NVME_ADMIN_QUEUE_DEPTH 64
 
@@ -20,7 +21,7 @@
 
 // --- ID STRUCTS ---
 // controller identification struct
-typedef volatile struct
+typedef struct
 {
     uint16_t vid; // PCI vendor id
     uint16_t ssvid; // subsystem vendor id
@@ -89,8 +90,8 @@ typedef volatile struct
 	uint8_t vendor_specific[3712];
 }
 __attribute__((packed))
-nvme_nsid_t;
-static_assert(sizeof(nvme_nsid_t) == 4096);
+nvme_nsidn_t;
+static_assert(sizeof(nvme_nsidn_t) == 4096);
 
 // Register stuff
 /* source: https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-Revision-2.3-2025.08.01-Ratified.pdf

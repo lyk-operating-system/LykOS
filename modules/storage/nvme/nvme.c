@@ -1,7 +1,11 @@
 #include "nvme.h"
+#include "dev/storage/drive.h"
 #include "mm/heap.h"
 #include "dev/bus/pci.h"
 #include "mm/mm.h"
+#include "utils/string.h"
+#include <stdint.h>
+#include <sys/types.h>
 
 // --- HELPERS ---
 
@@ -137,7 +141,55 @@ static void nvme_identify_namespace(nvme_t *nvme)
     nvme->
 }
 
+int nvme_read(drive_t *d, const void *buf, uint64_t lba, uint64_t count)
+{
+
+}
+
 // --- INIT ---
+
+void nvme_namespace_init(nvme_t *nvme, uint32_t nsid, nvme_nsidn_t *nsidnt)
+{
+    if (nsidnt->nsze == 0) return;
+
+    nvme_namespace_t *ns = heap_alloc(sizeof(*ns));
+    if (!ns) return;
+
+    ns->nsid = nsid;
+    ns->controller = nvme;
+
+    // parse LBA size and count
+    uint8_t flbas_index = nsidnt->flbas & 0X0F;
+    uint32_t lbaf       = nsidnt->lbafN[flbas_index];
+    uint32_t lba_shift  = (lbaf >> 16) & 0XFF;
+
+    ns->lba_size = 1U << lba_shift;
+    ns->lba_count = nsidnt->nsze;
+
+    // TO-DO: add error handling
+
+    drive_t *d = drive_create(DRIVE_TYPE_NVME);
+    if (!d) return;
+
+    // set serial number and model
+    char sn[21] = { 0 };
+    strncpy(sn, nvme->identity->sn, 20);
+
+    char mn[40] = { 0 };
+    strncpy(mn, nvme->identity->mn, 40);
+
+    d->serial = strdup(sn);
+    d->model = strdup(mn);
+
+    d->sectors = ns->lba_count;
+    d->sector_size = ns->lba_size;
+
+    d->read_sectors = nvme_read;
+
+    // d->driver = (void *)ns;
+    drive_mount(d);
+
+}
 
 void nvme_init(pci_header_type0_t *header)
 {
