@@ -1,5 +1,7 @@
 #include "ps2.h"
 
+#define LOG_PREFIX "PS/2"
+#include "arch/irq.h"
 #include "arch/x86_64/ioport.h"
 #include "log.h"
 #include "uapi/kb.h"
@@ -7,13 +9,17 @@
 #define PS2_DATA_PORT 0x60
 #define KB_IRQ 1
 
-void ps2kb_irq_handler()
+static irq_t *kb_irq;
+
+bool ps2kb_irq_handler([[maybe_unused]] irq_t *irq, [[maybe_unused]] void *data)
 {
     uint8_t scancode = x86_64_ioport_inb(PS2_DATA_PORT);
 
     kb_event_t e;
     if (scancode < 0x80)
+    {
         e.value = KEY_PRESS;
+    }
     else
     {
         e.value = KEY_RELEASE;
@@ -23,6 +29,8 @@ void ps2kb_irq_handler()
     e.timestamp = 0;
 
     log(LOG_DEBUG, "KEY: %u VALUE: %u", e.key, e.value);
+
+    return true;
 }
 
 void ps2kb_setup()
@@ -54,6 +62,10 @@ void ps2kb_setup()
         ;
     x86_64_ioport_outb(0x64, 0xAE);
 
-    arch_int_register_irq_handler(KB_IRQ, ps2kb_irq_handler);
-    x86_64_ioapic_map_legacy_irq(KB_IRQ, 0, false, false, 33);
+    kb_irq = irq_claim_legacy(1, IRQ_TRIGGER_EDGE_FALLING, ps2kb_irq_handler, 0);
+    if (!kb_irq)
+        log(LOG_ERROR, "Could not claim legacy IRQ 1 for PS/2 Keyboard!");
+    irq_set_affinity(kb_irq, 0);
+
+    log(LOG_WARN, "AA");
 }
