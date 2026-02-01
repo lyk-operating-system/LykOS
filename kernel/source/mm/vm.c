@@ -242,22 +242,12 @@ int vm_unmap(vm_addrspace_t *as, uintptr_t vaddr, size_t length)
  * Memory allocation
  */
 
-typedef struct
-{
-    size_t obj_size;
-}
-vm_alloc_hdr_t;
-
 void *vm_alloc(size_t size)
 {
-    size = CEIL(size + sizeof(vm_alloc_hdr_t), ARCH_PAGE_GRAN);
-
-    spinlock_acquire(&vm_kernel_as->slock);
+    size = CEIL(size, ARCH_PAGE_GRAN);
 
     uintptr_t out = 0;
     vm_map(vm_kernel_as, 0, size, MM_PROT_WRITE, VM_MAP_ANON | VM_MAP_POPULATE, NULL, 0, &out);
-
-    spinlock_release(&vm_kernel_as->slock);
 
     return out ? (void *)out : NULL;
 }
