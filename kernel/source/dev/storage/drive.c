@@ -1,16 +1,21 @@
 #include "dev/storage/drive.h"
+
+#include "dev/bus.h"
+#include "log.h"
+#include "mm/heap.h"
+#include "mm/mm.h"
 #include "sync/spinlock.h"
+#include "utils/list.h"
 #include "utils/ref.h"
 
 #define MAX_DRIVES 64
 
-static drive_t *drives[MAX_DRIVES];
-static int _drive_count = 0;
-static spinlock_t drives_lock = SPINLOCK_INIT;
+static list_t drive_list = LIST_INIT;
+static spinlock_t drive_list_lock = SPINLOCK_INIT;
+static int next_drive_id = 0;
 
-drive_t *drive_create(drive_type_t type, char *name, device_t *parent)
+drive_t *drive_create(drive_type_t type)
 {
-    // kmem_cache_t *drive_cache = kmem_new_cache("drive_t", sizeof(drive_t));
     drive_t *d = heap_alloc(sizeof(drive_t));
     if (!d)
         return NULL;
@@ -18,110 +23,106 @@ drive_t *drive_create(drive_type_t type, char *name, device_t *parent)
     memset(d, 0, sizeof(drive_t));
 
     d->type = type;
-    d->device.name = name;
-    d->device.parent = parent;
     d->device.class = DEVICE_STORAGE;
 
     ref_init(&d->device.refcount);
     d->device.slock = SPINLOCK_INIT;
+    d->mounted = false;
 
     return d;
 }
 
-
 void drive_free(drive_t *d)
 {
-    if (!d) return;
+    if (!d || d->mounted)
+        return;
 
-    spinlock_acquire(&d->device.slock);
-    spinlock_acquire(&drives_lock);
-
-    if(d->device.bus)
-        d->device.bus->remove_device(&d->device);
-
-    spinlock_release(&d->device.slock);
-    spinlock_release(&drives_lock);
-
-    ref_put(&d->device.refcount);
+    /* must not be mounted */
     heap_free(d);
 }
 
-
 void drive_mount(drive_t *d)
 {
-    spinlock_acquire(&d->device.slock);
-    spinlock_acquire(&drives_lock);
+    bool do_bus_register = false;
 
-    if (_drive_count >= MAX_DRIVES)
+    spinlock_acquire(&drive_list_lock);
+    spinlock_acquire(&d->device.slock);
+
+    if (!d->mounted && drive_list.length < MAX_DRIVES)
+    {
+        d->id = next_drive_id++;
+        list_append(&drive_list, &d->node);
+        d->mounted = true;
+
+        ref_get(&d->device.refcount);
+        do_bus_register = (d->device.bus != NULL);
+    }
+    else if (drive_list.length >= MAX_DRIVES)
     {
         log(LOG_ERROR, "Max drive number reached");
-        spinlock_release(&d->device.slock);
-        spinlock_release(&drives_lock);
-        return;
     }
 
-    d->id = _drive_count;
-    drives[_drive_count++] = d;
-
-    if (d->device.bus)
-        bus_register(d->device.bus);
-
-    ref_get(&d->device.refcount);
-
     spinlock_release(&d->device.slock);
-    spinlock_release(&drives_lock);
+    spinlock_release(&drive_list_lock);
+
+    if (do_bus_register)
+        bus_register(d->device.bus);
 }
 
 void drive_unmount(drive_t *d)
 {
-    spinlock_acquire(&d->device.slock);
-    spinlock_acquire(&drives_lock);
+    bool do_bus_remove = false;
 
-    for (int i = 0; i < _drive_count; i++)
+    spinlock_acquire(&drive_list_lock);
+    spinlock_acquire(&d->device.slock);
+
+    if (d->mounted)
     {
-        if (drives[i] == d)
-        {
-            for (int j=i; j < _drive_count - 1; j++)
-            {
-                drives[j] = drives[j+1];
-                drives[j]->id = j;
-            }
-            drives[--_drive_count] = NULL;
-            break;
-        }
+        list_remove(&drive_list, &d->node);
+        d->mounted = false;
+
+        ref_put(&d->device.refcount);
+        do_bus_remove = (d->device.bus != NULL);
     }
-    ref_put(&d->device.refcount);
 
     spinlock_release(&d->device.slock);
-    spinlock_release(&drives_lock);
-}
+    spinlock_release(&drive_list_lock);
 
-// Helpers
+    if (do_bus_remove)
+        d->device.bus->remove_device(&d->device);
+}
 
 drive_t *drive_get(int id)
 {
-    spinlock_acquire(&drives_lock);
+    drive_t *gd = NULL;
 
-    if (id < 0 || id >= _drive_count)
-    {
-        spinlock_release(&drives_lock);
+    if (id < 0)
         return NULL;
+
+    spinlock_acquire(&drive_list_lock);
+
+    FOREACH (n, drive_list)
+    {
+        drive_t *d = LIST_GET_CONTAINER(n, drive_t, node);
+        if (d->id == id)
+        {
+            ref_get(&d->device.refcount);
+            gd = d;
+            break;
+        }
     }
 
-    drive_t *d = drives[id];
-    ref_get(&d->device.refcount);
-
-    spinlock_release(&drives_lock);
-    return d;
+    spinlock_release(&drive_list_lock);
+    return gd;
 }
 
 int drive_count(void)
 {
     int count;
 
-    spinlock_acquire(&drives_lock);
-    count = _drive_count;
-    spinlock_release(&drives_lock);
+    spinlock_acquire(&drive_list_lock);
+    count = drive_list.length;
+    spinlock_release(&drive_list_lock);
 
     return count;
 }

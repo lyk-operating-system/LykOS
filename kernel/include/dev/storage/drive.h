@@ -1,12 +1,7 @@
 #pragma once
 
-#include "dev/bus.h"
 #include "dev/device.h"
-#include "log.h"
-#include "mm/heap.h"
-#include "mm/mm.h"
-#include "sync/spinlock.h"
-#include "utils/ref.h"
+#include "utils/list.h"
 
 typedef enum
 {
@@ -22,6 +17,7 @@ typedef struct drive
 {
     device_t device;
     int id;
+    bool mounted;
 
     drive_type_t type;
     const char *serial;
@@ -36,10 +32,11 @@ typedef struct drive
     int (*read_sectors)(struct drive *d, const void *buf, uint64_t lba, uint64_t count);
     int (*write_sectors)(struct drive *d, const void *buf, uint64_t lba, uint64_t count);
 
+    list_node_t node;
 }
 drive_t;
 
-drive_t *drive_create(drive_type_t type, char *name, device_t *parent);
+drive_t *drive_create(drive_type_t type);
 void drive_free(drive_t *d);
 
 void drive_mount(drive_t *d);
