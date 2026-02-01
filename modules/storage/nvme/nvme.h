@@ -47,7 +47,7 @@ typedef struct
 __attribute__((packed))
 nvme_cid_t;
 
-typedef volatile struct
+typedef struct
 {
 	uint64_t nsze;
 	uint64_t ncap;
@@ -261,6 +261,10 @@ typedef struct
     uint16_t head;
     uint16_t tail;
     uint8_t phase;
+
+    // add these for proper cid allocation
+    uint16_t next_cid;
+    bool cid_used[NVME_ADMIN_QUEUE_DEPTH];
 
     spinlock_t lock;
 }

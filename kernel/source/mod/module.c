@@ -62,8 +62,8 @@ int module_load(vnode_t *file, module_t **out)
     }
 
     // Allocate memory for the sections and save the address.
-    CLEANUP Elf64_Shdr *shdr = heap_alloc(ehdr.e_shnum * sizeof(Elf64_Shdr));
-    CLEANUP uintptr_t *section_addr = heap_alloc(ehdr.e_shnum * sizeof(uintptr_t));
+      Elf64_Shdr *shdr = vm_alloc(ehdr.e_shnum * sizeof(Elf64_Shdr));
+      uintptr_t *section_addr = vm_alloc(ehdr.e_shnum * sizeof(uintptr_t));
 
     for(int i = 0; i < ehdr.e_shnum; i++)
     {
@@ -129,7 +129,7 @@ int module_load(vnode_t *file, module_t **out)
         log(LOG_ERROR, "Missing symbol table!");
         return ENOEXEC;
     }
-    CLEANUP void *symtab = heap_alloc(symtab_hdr->sh_size);
+      void *symtab = vm_alloc(symtab_hdr->sh_size);
     if (vfs_read(file, symtab, symtab_hdr->sh_offset, symtab_hdr->sh_size, &count) != EOK || count != symtab_hdr->sh_size)
     {
         log(LOG_ERROR, "Could not load symbol table from file!");
@@ -143,7 +143,7 @@ int module_load(vnode_t *file, module_t **out)
         log(LOG_ERROR, "Missing string table!");
         return ENOEXEC;
     }
-    CLEANUP char *strtab = heap_alloc(strtab_hdr->sh_size);
+      char *strtab = vm_alloc(strtab_hdr->sh_size);
     if(vfs_read(file, strtab, strtab_hdr->sh_offset, strtab_hdr->sh_size, &count) != EOK || count != strtab_hdr->sh_size)
     {
         log(LOG_ERROR, "Could not load string table from file!");
@@ -193,7 +193,7 @@ int module_load(vnode_t *file, module_t **out)
         if (section->sh_type != SHT_RELA)
             continue;
 
-        CLEANUP Elf64_Rela *rela_entries = heap_alloc(section->sh_size);
+          Elf64_Rela *rela_entries = vm_alloc(section->sh_size);
         if (vfs_read(file, rela_entries, section->sh_offset, section->sh_size, &count) != EOK
         ||  count != section->sh_size)
         {
@@ -239,7 +239,7 @@ int module_load(vnode_t *file, module_t **out)
 
     // TODO: clean the actual segments allocated for the module.
 
-    *out = heap_alloc(sizeof(module_t));
+    *out = vm_alloc(sizeof(module_t));
     **out = module;
 
     log(LOG_INFO, "Kernel module loaded successfully.");
