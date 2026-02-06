@@ -12,6 +12,7 @@
 
 #include "arch/x86_64/devices/hpet.h"
 #include "arch/x86_64/devices/ioapic.h"
+#include "arch/x86_64/devices/lapic.h"
 #include "arch/x86_64/fpu.h"
 #include "arch/x86_64/tables/gdt.h"
 #include "arch/x86_64/tables/idt.h"
@@ -57,7 +58,8 @@ void __entry()
     // ACPI
     acpi_init();
 
-    // IOAPIC
+    // LAPIC & IOAPIC
+    x86_64_lapic_init_cpu();
     x86_64_ioapic_init(); // requires acpi
     // HPET
     x86_64_hpet_init(); // requires acpi

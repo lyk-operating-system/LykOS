@@ -183,7 +183,6 @@ void arch_int_handler(cpu_state_t *cpu_state)
             irq_handler_t handler;
 
             unsigned cpu_id = sched_get_curr_thread()->assigned_cpu->id;
-            log(LOG_WARN, "%d", cpu_id);
             cpu_vector_group_t *vg = &cpu_vec_grps[cpu_id];
             spinlock_acquire(&vg->slock);
             handler = vg->handlers[cpu_state->int_no];
