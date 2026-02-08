@@ -1,3 +1,5 @@
+#include "mm/dma.h"
+#include "mm/vm.h"
 #define LOG_PREFIX "NVME"
 #include "nvme.h"
 
@@ -150,8 +152,8 @@ static void nvme_create_admin_queue(nvme_t *nvme)
     nvme_queue_t *aq = vm_alloc(sizeof(nvme_queue_t));
     nvme->admin_queue = aq;
 
-    nvme->admin_queue->sq = (nvme_sq_entry_t *) dma_map(sq_size);
-    nvme->admin_queue->cq = (nvme_cq_entry_t *) dma_map(cq_size);
+    nvme->admin_queue->sq_dma = dma_alloc(sq_size);
+    nvme->admin_queue->cq_dma = dma_alloc(cq_size);
 
     memset(nvme->admin_queue->sq, 0, sq_size);
     memset(nvme->admin_queue->cq, 0, cq_size);
@@ -172,8 +174,8 @@ static void nvme_create_admin_queue(nvme_t *nvme)
     nvme->registers->AQA.acqs = NVME_ADMIN_QUEUE_DEPTH - 1;
 
     // program controller registers with physical addresses
-    nvme->registers->ASQ = dma_phys_addr(nvme->admin_queue->sq);
-    nvme->registers->ACQ = dma_phys_addr(nvme->admin_queue->cq);
+    nvme->registers->ASQ = nvme->admin_queue->sq_dma.paddr;
+    nvme->registers->ACQ = nvme->admin_queue->cq_dma.paddr;
 }
 
 static uint16_t nvme_submit_admin_command(nvme_t *nvme, uint8_t opc, nvme_command_t command)
@@ -272,15 +274,26 @@ static void nvme_admin_wait_completion(nvme_t *nvme, uint16_t cid)
 
 static void nvme_identify_controller(nvme_t *nvme)
 {
-    nvme->identity = (nvme_cid_t *)dma_map(sizeof(nvme_cid_t));
-    memset((void *)nvme->identity, 0, sizeof(nvme_cid_t));
+    dma_buf_t id_dma = dma_alloc(4096); // identify controller returns 4096 bytes
+    if (!id_dma.vaddr)
+    {
+        log(LOG_ERROR, "identify controller: dma alloc failed");
+        return;
+    }
+    memset(id_dma.vaddr, 0, 4096);
 
     nvme_command_t cmd = {0};
-    cmd.dptr.prp1 = dma_phys_addr((void *)nvme->identity);
+    cmd.dptr.prp1 = id_dma.paddr;
     cmd.cdw10 = 1; // CNS=1 for controller identify
 
     uint16_t cid = nvme_submit_admin_command(nvme, 0x06, cmd); // opcode 0x06 = Identify
     nvme_admin_wait_completion(nvme, cid);
+
+    nvme->identity = (nvme_cid_t *)vm_alloc(sizeof(nvme_cid_t));
+
+    memcpy(nvme->identity, id_dma.vaddr, sizeof(nvme_cid_t));
+
+    dma_free(&id_dma);
 }
 
 // dummy funcs
@@ -362,25 +375,25 @@ static void nvme_identify_namespace(nvme_t *nvme)
 
     for (uint32_t nsid = 1; nsid <= nn; nsid++)
     {
-        nvme_nsidn_t *nsidnt = (nvme_nsidn_t *)dma_map(sizeof(nvme_nsidn_t));
-        if (!nsidnt) continue;
-
-        memset((void *)nsidnt, 0, sizeof(nvme_nsidn_t));
+        dma_buf_t ns_dma = dma_alloc(sizeof(nvme_nsidn_t));
+        memset(ns_dma.vaddr, 0, sizeof(nvme_nsidn_t));
 
         nvme_command_t identify_ns =
         {
             .nsid = nsid,
-            .dptr.prp1 = dma_phys_addr(nsidnt),
+            .dptr.prp1 = ns_dma.paddr,
             .cdw10 = 0X00
         };
 
         uint16_t cid = nvme_submit_admin_command(nvme, 0x06, identify_ns); // opcode 0x06 = Identify
         nvme_admin_wait_completion(nvme, cid);
 
+        nvme_nsidn_t *nsidnt = (nvme_nsidn_t *)ns_dma.vaddr;
+
         if (nsidnt->nsze != 0)
             nvme_namespace_init(nvme, nsid, nsidnt);
 
-        dma_unmap((uintptr_t) nsidnt, sizeof(nvme_nsidn_t));
+        dma_free(&ns_dma);
     }
 }
 

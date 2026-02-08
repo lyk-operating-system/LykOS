@@ -1,7 +1,15 @@
-#include "mm/pm.h"
-#include "hhdm.h"
+#pragma once
 
-uintptr_t dma_phys_addr(void *virt);
+#include <stddef.h>
+#include <stdint.h>
 
-uintptr_t dma_map(size_t size);
-void dma_unmap(uintptr_t virt, size_t size);
+typedef struct
+{
+    void *vaddr;
+    uintptr_t paddr;
+    uint8_t order;
+    size_t size;
+} dma_buf_t;
+
+dma_buf_t dma_alloc(size_t size);
+void      dma_free(dma_buf_t *b);

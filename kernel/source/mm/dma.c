@@ -1,38 +1,48 @@
 #include "mm/dma.h"
 
-uintptr_t dma_phys_addr(void *virt)
-{
-    return (uintptr_t)virt - HHDM;
-}
+#include "hhdm.h"
+#include "mm/pm.h"
+#include "mm/mm.h"
 
-uintptr_t dma_map(size_t size)
+#define ALIGN_UP(x,a) (((x) + ((a)-1)) & ~((a)-1))
+
+dma_buf_t dma_alloc(size_t size)
 {
-    size_t pages = (size + ARCH_PAGE_GRAN - 1) / ARCH_PAGE_GRAN;
+    dma_buf_t out = {0};
+
+    size = ALIGN_UP(size, ARCH_PAGE_GRAN);
+    if (size == 0) return out;
+
+    size_t pages = size / ARCH_PAGE_GRAN;
     uint8_t order = pm_pagecount_to_order(pages);
+    size_t count = pm_order_to_pagecount(order);
 
     page_t *page = pm_alloc(order);
-    if (!page) return 0;
+    if (!page) return out;
 
-    size_t count = pm_order_to_pagecount(order);
     for (size_t i = 0; i < count; i++)
         pm_page_map_inc(&page[i]);
 
-    return page->addr + HHDM;
+    out.paddr = page->addr;
+    out.size  = count * ARCH_PAGE_GRAN;     // actual allocation size
+    out.order = order;
+    out.vaddr = (void *)(out.paddr + HHDM); // CPU VA through direct map
+
+    return out;
 }
 
-void dma_unmap(uintptr_t virt, size_t size)
+void dma_free(dma_buf_t *b)
 {
-    uintptr_t phys = (uintptr_t)virt - HHDM;
+    if (!b || !b->paddr) return;
 
-    size_t pages = (size + ARCH_PAGE_GRAN - 1) / ARCH_PAGE_GRAN;
-    uint8_t order = pm_pagecount_to_order(pages);
-    size_t count = pm_order_to_pagecount(order);
-
-    page_t *page = pm_phys_to_page(phys);
+    size_t count = pm_order_to_pagecount(b->order);
+    page_t *page = pm_phys_to_page(b->paddr);
 
     for (size_t i = 0; i < count; i++)
     {
         if (pm_page_map_dec(&page[i]))
-            pm_free(&page[i]); // probs with refcount might arise
+            pm_free(&page[i]);
     }
+
+    *b = (dma_buf_t){0};
 }

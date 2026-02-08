@@ -256,6 +256,9 @@ typedef struct
     nvme_sq_entry_t *sq;
     nvme_cq_entry_t *cq;
 
+    dma_buf_t sq_dma;
+    dma_buf_t cq_dma;
+
     uint16_t qid;
     uint16_t depth;
     uint16_t head;
