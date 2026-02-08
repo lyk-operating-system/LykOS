@@ -1,6 +1,8 @@
 #include "arch/paging.h"
 
+#include "assert.h"
 #include "hhdm.h"
+#include "log.h"
 #include "mm/heap.h"
 #include "mm/mm.h"
 #include "mm/pm.h"
@@ -8,6 +10,10 @@
 #define PTE_PRESENT   (1ull <<  0)
 #define PTE_WRITE     (1ull <<  1)
 #define PTE_USER      (1ull <<  2)
+#define PTE_PWT       (1ull <<  3)
+#define PTE_PCD       (1ull <<  4)
+#define PTE_ACCESSED  (1ull <<  5)
+#define PTE_DIRTY     (1ull <<  6)
 #define PTE_HUGE      (1ull <<  7)
 #define PTE_GLOBAL    (1ull <<  8)
 #define PTE_NX        (1ull << 63)
@@ -21,70 +27,78 @@ struct arch_paging_map
     pte_t *pml4;
 };
 
-// Helpers
-
-static int translate_prot(int prot)
-{
-    uint64_t pteprot = 0;
-
-    if (prot & MM_PROT_WRITE)
-        pteprot |= PTE_WRITE;
-    if (prot & MM_PROT_USER)
-        pteprot |= PTE_USER;
-    if (!(prot & MM_PROT_EXEC))
-        pteprot |= PTE_NX;
-
-    return pteprot;
-}
-
 // Mapping and unmapping
 
-static inline uint64_t hh_user_flag(bool hh)
+static pte_t *get_next_level(pte_t *table, uint64_t idx, bool alloc, bool user)
 {
-    return hh ? 0 : PTE_USER;
+    if (table[idx] & PTE_PRESENT)
+        return (pte_t *)(PTE_ADDR_MASK(table[idx]) + HHDM);
+
+    if (!alloc)
+        return NULL;
+
+    page_t *p = pm_alloc(0);
+    if (!p)
+        return NULL;
+
+    uintptr_t phys = p->addr;
+    pte_t *next_level = (pte_t *)(phys + HHDM);
+    memset(next_level, 0, 0x1000);
+
+    table[idx] = phys | PTE_PRESENT | PTE_WRITE | (user ? PTE_USER : 0);
+    pm_page_refcount_inc(pm_phys_to_page(PTE_ADDR_MASK((uintptr_t)table - HHDM)));
+
+    return next_level;
 }
 
-static inline uint64_t hh_leaf_flags(bool hh)
+int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t paddr, size_t size, vm_protection_t prot, vm_cache_t cache)
 {
-    return hh ? 0 : (PTE_USER | PTE_GLOBAL);
-}
+    ASSERT(size == ARCH_PAGE_SIZE_4K
+        || size == ARCH_PAGE_SIZE_2M
+        || size == ARCH_PAGE_SIZE_1G);
+    ASSERT(vaddr % size == 0);
+    ASSERT(paddr % size == 0);
 
-int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t paddr, size_t size, int prot)
-{
-    pte_t _prot = translate_prot(prot);
-    bool hh = vaddr >= HHDM; // Is higher half?
+    pte_t _prot = 0;
+    if (!prot.read) log(LOG_ERROR, "No-read mapping is not supported on x86_64!");
+    if (prot.write) _prot |= PTE_WRITE;
+    if (!prot.exec) _prot |= PTE_NX;
+    if (cache == VM_CACHE_NONE)               _prot |= PTE_PCD;
+    else if (cache == VM_CACHE_WRITE_COMBINE) _prot |= PTE_PWT;
+
+    bool is_user = vaddr < HHDM;
 
     size_t indices[] = {
-        (vaddr >> 12) & 0x1FF, // PML1 entry
-        (vaddr >> 21) & 0x1FF, // PML2 entry
-        (vaddr >> 30) & 0x1FF, // PML3 entry
-        (vaddr >> 39) & 0x1FF  // PML4 entry
+        (vaddr >> 12) & 0x1FF,
+        (vaddr >> 21) & 0x1FF,
+        (vaddr >> 30) & 0x1FF,
+        (vaddr >> 39) & 0x1FF
     };
 
     pte_t *table = map->pml4;
-    size_t level;
-    size_t target_level = (size == 1 * GIB) ? 2 : (size == 2 * MIB) ? 1 : 0;
-    for (level = 3; level > target_level; level--)
+    size_t target_level = (size == 1 * GIB) ? 2
+                        : (size == 2 * MIB) ? 1
+                        : 0;
+    for (size_t level = 3; level > target_level; level--)
     {
         size_t idx = indices[level];
+        ASSERT(!(table[idx] & PTE_HUGE));
 
-        if (!(table[idx] & PTE_PRESENT))
-        {
-            uintptr_t phys = pm_alloc(0)->addr;
-            pte_t *next_table = (pte_t *)(phys + HHDM);
-            memset(next_table, 0, 0x1000);
-            table[idx] = phys | PTE_PRESENT | PTE_WRITE | hh_user_flag(hh);
-        }
-
-        pm_page_refcount_inc(pm_phys_to_page(PTE_ADDR_MASK((uintptr_t)table - HHDM)));
-        table = (pte_t *)(PTE_ADDR_MASK(table[idx]) + HHDM);
+        pte_t *next = get_next_level(table, idx, true, is_user);
+        if (!next)
+            return -1;
+        table = next;
     }
 
     uint64_t leaf_idx = indices[target_level];
+    ASSERT(!(table[leaf_idx] & PTE_PRESENT));
+
     pm_page_refcount_inc(pm_phys_to_page(PTE_ADDR_MASK((uintptr_t)table - HHDM)));
-    table[leaf_idx] = paddr | PTE_PRESENT | _prot | hh_leaf_flags(hh);
-    if (target_level > 0) // Add Huge bit if mapping 2MiB or 1GiB.
-        table[leaf_idx] |= PTE_HUGE;
+    pte_t entry = paddr | PTE_PRESENT | _prot | (is_user ? PTE_USER : 0);
+    if (target_level > 0)
+        entry |= PTE_HUGE;
+
+    table[leaf_idx] = entry;
 
     return 0;
 }
@@ -147,7 +161,7 @@ int arch_paging_unmap_page(arch_paging_map_t *map, uintptr_t vaddr)
 
 // Utils
 
-bool arch_paging_vaddr_to_paddr(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t *out_paddr)
+bool arch_paging_vaddr_to_paddr(const arch_paging_map_t *map, uintptr_t vaddr, uintptr_t *out_paddr)
 {
     uint64_t pml4e = (vaddr >> 39) & 0x1FF;
     uint64_t pml3e = (vaddr >> 30) & 0x1FF;

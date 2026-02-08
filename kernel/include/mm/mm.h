@@ -11,6 +11,31 @@
 #define MM_PROT_EXEC    0x4
 #define MM_PROT_FULL    (MM_PROT_WRITE | MM_PROT_USER | MM_PROT_EXEC)
 
+typedef struct
+{
+    bool read  : 1;
+    bool write : 1;
+    bool exec  : 1;
+}
+vm_protection_t;
+
+#define VM_PROTECTION_FULL ((vm_protection_t) {.read = true, .write = true, .exec = true})
+
+typedef enum
+{
+    VM_PRIVILEGE_KERNEL,
+    VM_PRIVILEGE_USER
+}
+vm_privilege_t;
+
+typedef enum
+{
+    VM_CACHE_STANDARD,
+    VM_CACHE_WRITE_COMBINE,
+    VM_CACHE_NONE
+}
+vm_cache_t;
+
 void *memcpy(void *restrict dest, const void *restrict src, size_t n);
 
 void *memmove(void *dest, const void *src, size_t n);

@@ -1,19 +1,22 @@
 #pragma once
 
+#include "mm/mm.h"
 #include <stddef.h>
 #include <stdint.h>
+
+// Forward declaration
 
 typedef struct arch_paging_map arch_paging_map_t;
 
 // Mapping and unmapping
 
-int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t paddr, size_t size, int prot);
+int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t paddr, size_t size, vm_protection_t prot, vm_cache_t cache);
 
 int arch_paging_unmap_page(arch_paging_map_t *map, uintptr_t vaddr);
 
 // Utils
 
-bool arch_paging_vaddr_to_paddr(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t *out_paddr);
+bool arch_paging_vaddr_to_paddr(const arch_paging_map_t *map, uintptr_t vaddr, uintptr_t *out_paddr);
 
 // Map creation and destruction
 
