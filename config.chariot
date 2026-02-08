@@ -94,7 +94,7 @@ package/modules {
             --cross-file=$SOURCES_DIR/support/cross-files/kernel-$OPTION_arch.ini \
             --prefix=$PREFIX \
             -Darch=$OPTION_arch \
-            -Denabled_modules=test_module,pci \
+            -Denabled_modules=test_module,pci,nvme \
             -Dkernel_include_dir=$SOURCES_DIR/kernel/include \
             $SOURCES_DIR/modules
     </sh>
@@ -133,7 +133,7 @@ custom/kernel {
 custom/initrd {
     dependencies: [
         source/initrd
-        package/apps package/modules
+        package/modules
     ]
     build: <sh>
         cp -r $SOURCES_DIR/initrd .

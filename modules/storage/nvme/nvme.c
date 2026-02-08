@@ -1,5 +1,6 @@
 #include "mm/dma.h"
 #include "mm/vm.h"
+#include <stdint.h>
 #define LOG_PREFIX "NVME"
 #include "nvme.h"
 
@@ -7,6 +8,7 @@
 #include "log.h"
 #include "dev/bus/pci.h"
 #include "mm/mm.h"
+#include "mm/mmio.h"
 #include "arch/lcpu.h"
 #include "sync/spinlock.h"
 #include "utils/string.h"
@@ -29,7 +31,7 @@ static nvme_cq_entry_t *nvme_poll_cq(nvme_t *nvme, nvme_queue_t *queue)
         queue->phase ^= 1;
 
     // tell controller entry is consumed
-    NVME_CQ_HDBL(nvme->registers, queue->qid, nvme->registers->stride) = queue->head;
+    NVME_CQ_HDBL(nvme->registers, queue->qid, nvme->db_stride) = queue->head;
 
     // free CID
     spinlock_acquire(&queue->lock);
@@ -105,17 +107,54 @@ void nvme_reset(nvme_t *nvme)
 {
     log(LOG_DEBUG, "Resetting NVMe controller");
 
-    // Disable the controller
-    nvme->registers->CC.en = 0;
+    enum { NVME_OFF_CC = 0x14, NVME_OFF_CSTS = 0x1C };
+
+    volatile uint32_t *cc   = (volatile uint32_t *)((uintptr_t)nvme->registers + NVME_OFF_CC);
+    volatile uint32_t *csts = (volatile uint32_t *)((uintptr_t)nvme->registers + NVME_OFF_CSTS);
+
+    uint32_t cc_before   = *cc;
+    uint32_t csts_before = *csts;
+
+    log(LOG_DEBUG, "MMIO base=%p CC(before)=%#x CSTS(before)=%#x (RDY=%u CFS=%u)",
+        nvme->registers,
+        cc_before,
+        csts_before,
+        (unsigned)(csts_before & 1u),
+        (unsigned)((csts_before >> 1) & 1u));
+
+    // Disable the controller: clear EN (bit 0) with a single 32-bit store
+    uint32_t cc_after = cc_before & ~1u;
+
+    log(LOG_DEBUG, "Writing CC=%#x (clearing EN)", cc_after);
+    *cc = cc_after;
+
+    // Read back to confirm write posted
+    uint32_t cc_readback = *cc;
+    uint32_t csts_mid    = *csts;
+
+    log(LOG_DEBUG, "CC(after)=%#x (EN=%u) CSTS(mid)=%#x (RDY=%u CFS=%u)",
+        cc_readback,
+        (unsigned)(cc_readback & 1u),
+        csts_mid,
+        (unsigned)(csts_mid & 1u),
+        (unsigned)((csts_mid >> 1) & 1u));
 
     // Wait for controller to acknowledge disable (CSTS.RDY = 0)
     uint64_t timeout = 1000000;
-    while (nvme->registers->CSTS.rdy && timeout--)
+    while (((*csts) & 1u) && timeout--)
         arch_lcpu_relax();
+
+    uint32_t csts_after = *csts;
+    log(LOG_DEBUG, "CSTS(after)=%#x (RDY=%u CFS=%u) timeout_left=%lu",
+        csts_after,
+        (unsigned)(csts_after & 1u),
+        (unsigned)((csts_after >> 1) & 1u),
+        (unsigned long)timeout);
 
     if (timeout == 0)
         log(LOG_WARN, "NVMe reset: timeout waiting for CSTS.rdy=0");
 }
+
 
 // Remove the "testing" version and use proper start
 void nvme_start(nvme_t *nvme)
@@ -226,7 +265,7 @@ static uint16_t nvme_submit_admin_command(nvme_t *nvme, uint8_t opc, nvme_comman
     aq->tail = next_tail;
 
     // ring doorbell
-    NVME_SQ_TDBL(nvme->registers, aq->qid, nvme->registers->stride) = aq->tail;
+    NVME_SQ_TDBL(nvme->registers, aq->qid, nvme->db_stride) = aq->tail;
 
     spinlock_release(&aq->lock);
     return cid;
@@ -398,27 +437,85 @@ static void nvme_identify_namespace(nvme_t *nvme)
 }
 
 // --- INIT ---
+static void pci_dump_bars(pci_header_type0_t *h)
+{
+    // Common fields that matter for BAR decode
+    log(LOG_DEBUG, "PCI CMD=%#04x STATUS=%#04x",
+        h->common.command, h->common.status);
+
+    for (int i = 0; i < 6; i++)
+        log(LOG_DEBUG, "BAR%d raw = %#010x", i, h->bar[i]);
+
+    // Decode BAR0 quickly (typical NVMe)
+    uint32_t lo = h->bar[0];
+    uint32_t hi = h->bar[1];
+
+    if (lo == 0 && hi == 0)
+    {
+        log(LOG_WARN, "BAR0/BAR1 are both 0 (BAR likely unassigned)");
+        return;
+    }
+
+    if (lo & 0x1)
+    {
+        // I/O BAR (should not happen for NVMe)
+        uint32_t io_base = lo & 0xFFFFFFFCu;
+        log(LOG_WARN, "BAR0 is I/O BAR: io_base=%#x", io_base);
+        return;
+    }
+
+    uint32_t type = (lo >> 1) & 0x3; // 0=32-bit, 2=64-bit
+    uint32_t prefetch = (lo >> 3) & 0x1;
+
+    if (type == 0x0)
+    {
+        uint64_t base = (uint64_t)(lo & 0xFFFFFFF0u);
+        log(LOG_DEBUG, "BAR0 mem32 base=%#lx prefetch=%u", base, prefetch);
+    }
+    else if (type == 0x2)
+    {
+        uint64_t base = ((uint64_t)hi << 32) | (uint64_t)(lo & 0xFFFFFFF0u);
+        log(LOG_DEBUG, "BAR0 mem64 base=%#lx prefetch=%u", base, prefetch);
+    }
+    else
+    {
+        log(LOG_WARN, "BAR0 mem type=%u (unexpected)", type);
+    }
+}
 
 void nvme_init(pci_header_type0_t *header)
 {
     log(LOG_DEBUG, "Entered nvme init function.");
+    pci_dump_bars(header);
 
-    // TEMP FIX: Manually assign BAR
-    header->bar[0] = 0xFEBF0004;  // Physical addr + 64-bit flag
-    header->bar[1] = 0x00000000;   // Upper 32 bits (zero for addresses < 4GB)
     header->common.command |= (1 << 1) | (1 << 2);  // Enable Memory + Bus Master
 
     nvme_t *nvme = vm_alloc(sizeof(nvme_t));
 
-    // Read the BAR we just assigned
-    uint64_t bar0 = ((uint64_t)header->bar[1] << 32) | (header->bar[0] & 0xFFFFFFF0);
-    nvme->registers = (nvme_regs_t *)(HHDM + bar0);
+    // Read the BAR as 64-bit MMIO base
+    uint64_t bar0_phys = ((uint64_t)header->bar[1] << 32) | (header->bar[0] & 0xFFFFFFF0u);
+    log(LOG_DEBUG, "NVMe BAR0 phys = %#lx", bar0_phys);
+
+    nvme->registers = (nvme_regs_t *)mmio_map((uintptr_t)bar0_phys, 0x4000);
+    if (!nvme->registers)
+    {
+        log(LOG_ERROR, "mmio_map BAR0 failed");
+        return;
+    }
 
     nvme_cap_t *cap = (nvme_cap_t *)&nvme->registers->CAP;
-    nvme->registers->stride = 4 << cap->dstrd;
+    nvme->db_stride = 4 << cap->dstrd;
 
     log(LOG_DEBUG, "CAP: MQES=%u, TO=%u, DSTRD=%u, CSS=%u",
         cap->mqes, cap->to, cap->dstrd, cap->css);
+
+    volatile uint32_t *cc_reg = (volatile uint32_t *)((uintptr_t)nvme->registers + 0x14); // CC offset
+    uint32_t cc_before = *cc_reg;
+    log(LOG_DEBUG, "CC raw before reset = %#x", cc_before);
+
+    // Try a no-op write: write same value back
+    *cc_reg = cc_before;
+    log(LOG_DEBUG, "CC raw after noop write = %#x", *cc_reg);
 
     // basic flow
     nvme_reset(nvme);

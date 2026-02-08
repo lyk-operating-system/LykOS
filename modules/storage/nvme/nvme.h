@@ -9,6 +9,7 @@
 #include "sync/spinlock.h"
 #include "dev/storage/drive.h"
 #include "utils/string.h"
+#include <stdint.h>
 
 #define NVME_ADMIN_QUEUE_DEPTH 64
 
@@ -168,7 +169,6 @@ typedef volatile struct
     uint64_t ASQ;          // Admin Submission Queue Base Address
     uint64_t ACQ;          // Admin Completion Queue Base Address
     uint8_t  _rsvd2[0x1000 - 0x38];
-    uint32_t stride;       // Doorbell registers
 } __attribute__((packed)) nvme_regs_t;
 
 // ---------
@@ -284,6 +284,8 @@ typedef struct
     nvme_queue_t *io_queue;
 
     nvme_cid_t *identity;
+
+    uint32_t db_stride;
 }
 __attribute__((packed))
 nvme_t;

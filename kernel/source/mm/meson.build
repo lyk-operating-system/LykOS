@@ -3,6 +3,7 @@ c_files += files(
     'heap.c',
     'kmem.c',
     'mm.c',
+    'mmio.c',
     'pm.c',
     'vm.c',
 )
