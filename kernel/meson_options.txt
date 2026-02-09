@@ -5,3 +5,11 @@ option(
     value: 'x86_64',
     description: 'Target architecture.',
 )
+
+option(
+    'build_type',
+    type: 'combo',
+    choices: ['debug', 'release'],
+    value: 'debug',
+    description: 'Build type.',
+)
