@@ -30,9 +30,10 @@ vm_privilege_t;
 
 typedef enum
 {
-    VM_CACHE_STANDARD,
-    VM_CACHE_WRITE_COMBINE,
-    VM_CACHE_NONE
+    VM_CACHE_STANDARD,      // Write-Back
+    VM_CACHE_WRITE_THROUGH, // Write-Through
+    VM_CACHE_WRITE_COMBINE, // Write-Combining
+    VM_CACHE_NONE           // Uncached
 }
 vm_cache_t;
 

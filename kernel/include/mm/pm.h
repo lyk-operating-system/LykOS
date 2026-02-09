@@ -16,11 +16,7 @@ typedef struct
     bool free;
 
     atomic_uint mapcount;
-    union
-    {
-        atomic_uint refcount;
-        atomic_uint pte_children;
-    };
+    atomic_uint refcount;
 
     list_node_t list_elem;
 }

@@ -1,22 +1,22 @@
 #include "arch/paging.h"
 
+#include "arch/x86_64/msr.h"
 #include "assert.h"
 #include "hhdm.h"
 #include "log.h"
 #include "mm/heap.h"
-#include "mm/mm.h"
 #include "mm/pm.h"
 
 #define PTE_PRESENT   (1ull <<  0)
 #define PTE_WRITE     (1ull <<  1)
 #define PTE_USER      (1ull <<  2)
-#define PTE_PWT       (1ull <<  3)
-#define PTE_PCD       (1ull <<  4)
 #define PTE_ACCESSED  (1ull <<  5)
 #define PTE_DIRTY     (1ull <<  6)
 #define PTE_HUGE      (1ull <<  7)
 #define PTE_GLOBAL    (1ull <<  8)
 #define PTE_NX        (1ull << 63)
+
+#define PTE_PAT_IDX(IDX) (IDX << 3)
 
 #define PTE_ADDR_MASK(VALUE) ((VALUE) & 0x000FFFFFFFFFF000ull)
 
@@ -63,8 +63,13 @@ int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t padd
     if (!prot.read) log(LOG_ERROR, "No-read mapping is not supported on x86_64!");
     if (prot.write) _prot |= PTE_WRITE;
     if (!prot.exec) _prot |= PTE_NX;
-    if (cache == VM_CACHE_NONE)               _prot |= PTE_PCD;
-    else if (cache == VM_CACHE_WRITE_COMBINE) _prot |= PTE_PWT;
+    const int attr_idx[] = {
+        [VM_CACHE_STANDARD]      = 0,
+        [VM_CACHE_WRITE_THROUGH] = 1,
+        [VM_CACHE_WRITE_COMBINE] = 2,
+        [VM_CACHE_NONE]          = 3,
+    };
+    _prot = PTE_PAT_IDX(attr_idx[cache]);
 
     bool is_user = vaddr < HHDM;
 
@@ -257,4 +262,11 @@ void arch_paging_init()
         memset(pml3, 0, 0x1000);
         higher_half_entries[i] = (pte_t)((uintptr_t)pml3 - HHDM) | PTE_PRESENT | PTE_WRITE | PTE_USER;
     }
+
+    // Setup PAT register
+    uint64_t pat =  6ull         // Write-Back
+                 | (4ull <<  8)  // Write-Through
+                 | (1ull << 16)  // Write-Combining
+                 | (0ull << 24); // Uncached
+    x86_64_msr_write(X86_64_MSR_PAT, pat);
 }
