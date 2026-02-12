@@ -1,6 +1,7 @@
-#include "syscall.h"
+#include "sys/syscall.h"
 
 #include "proc/sched.h"
+
 
 const void* syscall_table[] = {
     (void *)syscall_debug_log,
@@ -12,6 +13,10 @@ const void* syscall_table[] = {
     (void *)syscall_mmap,
     (void *)syscall_exit,
     (void *)syscall_tcb_set,
+    (void *)syscall_getcwd,
+    (void *)syscall_chdir,
+    (void *)syscall_mkdir,
+    (void *)syscall_rmdir
 };
 
 const uint64_t syscall_table_length = sizeof(syscall_table) / sizeof(void*);
