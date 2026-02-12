@@ -8,6 +8,13 @@ asm_files += files(
     'userspace.asm',
 )
 
+# Optimised mem functions only perform better on real hardware or KVM accelerated VMs
+if build_type == 'release'
+    asm_files += files(
+        'mem.asm',
+    )
+endif
+
 c_files += files(
     'cpuid.c',
     'entry.c',

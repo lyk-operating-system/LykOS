@@ -51,3 +51,4 @@ endif
 
 subdir('bus')
 subdir('misc')
+subdir('input')

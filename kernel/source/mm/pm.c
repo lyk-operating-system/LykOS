@@ -61,14 +61,12 @@ page_t *pm_alloc(uint8_t order)
     page->order = order;
     page->free = false;
     page->mapcount = 0;
-    page->refcount = 1;
+    page->children = 1;
     return page;
 }
 
 void pm_free(page_t *block)
 {
-    ASSERT(block->refcount == 1);
-
     spinlock_acquire(&slock);
 
     size_t idx = block->addr / ARCH_PAGE_GRAN;
@@ -97,7 +95,7 @@ void pm_free(page_t *block)
     block->order = i;
     block->free = true;
     block->mapcount = 0;
-    block->refcount = 0;
+    block->children = 0;
     list_append(&levels[i], &block->list_elem);
 
     spinlock_release(&slock);

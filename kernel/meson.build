@@ -7,6 +7,7 @@ project(
 )
 
 arch = get_option('arch')
+build_type = get_option('build_type')
 
 if arch == 'x86_64'
     add_languages('nasm')

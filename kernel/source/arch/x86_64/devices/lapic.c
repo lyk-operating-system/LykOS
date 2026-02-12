@@ -26,8 +26,6 @@
 #define TSC_DEADLINE (2 << 17)
 #define MASK         (1 << 16)
 
-#define IRQ 64
-
 static uint64_t g_lapic_base;
 static uint64_t g_lapic_timer_freq = 0;
 
@@ -52,7 +50,7 @@ void arch_timer_stop()
 void arch_timer_oneshot(size_t us)
 {
     lapic_write(REG_TIMER_LVT, MASK);
-    lapic_write(REG_TIMER_LVT, ONE_SHOOT | (32 + IRQ));
+    lapic_write(REG_TIMER_LVT, ONE_SHOOT | LAPIC_TIMER_VECTOR);
     lapic_write(REG_TIMER_DIV, 0);
     lapic_write(REG_TIMER_INITIAL_COUNT, us * g_lapic_timer_freq / 1'000'000);
 }
