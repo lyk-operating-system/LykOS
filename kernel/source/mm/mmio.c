@@ -23,65 +23,42 @@ uintptr_t mmio_map(uintptr_t phys, size_t size)
         return 0;
 
     // Preserve sub-page offset, map whole pages.
-    uintptr_t page_off   = phys & (ARCH_PAGE_GRAN - 1);
-    uintptr_t phys_page  = phys & ~(ARCH_PAGE_GRAN - 1);
-    size_t    size_pages = CEIL(size + page_off, ARCH_PAGE_GRAN);
+    const uintptr_t page_off  = phys & (ARCH_PAGE_GRAN - 1);
+    const uintptr_t phys_base = phys & ~(ARCH_PAGE_GRAN - 1);
+    const size_t    map_len   = CEIL(size + page_off, ARCH_PAGE_GRAN);
 
-    // 1) Reserve a VA range (this allocs+maps RAM pages right now).
+    vm_protection_t prot = VM_PROTECTION_FULL;
+    prot.exec = 0; // NX for MMIO
+
     uintptr_t virt_base = 0;
-    int rc = vm_map(vm_kernel_as,
-                    0,
-                    size_pages,
-                    MMIO_MAP_PROT,
-                    MMIO_MAP_FLAGS,
-                    NULL,
-                    0,
-                    &virt_base);
-    if (rc != EOK || virt_base == 0)
+
+    int rc = vm_map_phys(vm_kernel_as,
+                         0,
+                         phys_base,
+                         map_len,
+                         prot,
+                         VM_CACHE_NONE,    // UC MMIO
+                         0,
+                         &virt_base);
+
+    if (rc != EOK || virt_base == 0) {
+        log(LOG_ERROR, "mmio_map: vm_map_phys failed rc=%d phys=%#lx len=%#lx",
+            rc, (unsigned long)phys_base, (unsigned long)map_len);
         return 0;
-
-    // 2) Replace each VA page mapping with the target MMIO physical page.
-    for (size_t off = 0; off < size_pages; off += ARCH_PAGE_GRAN)
-    {
-        uintptr_t va = virt_base + off;
-
-        // Find the RAM page vm_map() created so we can free it.
-        uintptr_t tmp_phys = 0;
-        bool ok = arch_paging_vaddr_to_paddr(vm_kernel_as->page_map, va, &tmp_phys);
-        if (!ok)
-        {
-            // Best-effort cleanup: unmap whole region
-            vm_unmap(vm_kernel_as, virt_base, size_pages);
-            return 0;
-        }
-
-        // Unmap the temp page (flushes TLB for this VA in your arch_paging_unmap_page()).
-        arch_paging_unmap_page(vm_kernel_as->page_map, va);
-
-        // Free the temp physical page (vm_map allocated it via pm_alloc(0)).
-        // This assumes your pm_alloc sets refcount=1 and your mappings don't bump it.
-        pm_free(pm_phys_to_page(tmp_phys & ~(ARCH_PAGE_GRAN - 1)));
-
-        // Now map the MMIO physical page uncached.
-        arch_paging_map_page(vm_kernel_as->page_map,
-                             va,
-                             phys_page + off,
-                             ARCH_PAGE_GRAN,
-                             MMIO_MAP_PROT);
-        // No invlpg needed here because we already invalidated when unmapping.
     }
 
-    // Return VA corresponding to original physical (including offset)
     return virt_base + page_off;
 }
 
 void mmio_unmap(uintptr_t vaddr, size_t size)
 {
-    if (!vaddr || !size) return;
+    if (!vaddr || !size)
+        return;
 
-    uintptr_t page_off   = vaddr & (ARCH_PAGE_GRAN - 1);
-    uintptr_t virt_base  = vaddr & ~(ARCH_PAGE_GRAN - 1);
-    size_t    size_pages = CEIL(size + page_off, ARCH_PAGE_GRAN);
+    const uintptr_t page_off  = vaddr & (ARCH_PAGE_GRAN - 1);
+    const uintptr_t virt_base = vaddr & ~(ARCH_PAGE_GRAN - 1);
+    const size_t    map_len   = CEIL(size + page_off, ARCH_PAGE_GRAN);
 
-    vm_unmap(vm_kernel_as, virt_base, size_pages);
+    // Unmap the VA range; for MMIO we never "free" device physical pages.
+    vm_unmap(vm_kernel_as, virt_base, map_len);
 }
