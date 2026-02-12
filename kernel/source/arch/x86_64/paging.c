@@ -29,6 +29,18 @@ struct arch_paging_map
 
 // Mapping and unmapping
 
+static inline void pt_children_inc(pte_t *table)
+{
+    page_t *p = pm_phys_to_page(((uintptr_t)table) - HHDM);
+    atomic_fetch_add_explicit(&p->children, 1, memory_order_relaxed);
+}
+
+static inline bool pt_children_dec(pte_t *table)
+{
+    page_t *p = pm_phys_to_page(((uintptr_t)table) - HHDM);
+    return atomic_fetch_sub_explicit(&p->children, 1, memory_order_relaxed) == 1;
+}
+
 static pte_t *get_next_level(pte_t *table, uint64_t idx, bool alloc, bool user)
 {
     if (table[idx] & PTE_PRESENT)
@@ -46,7 +58,7 @@ static pte_t *get_next_level(pte_t *table, uint64_t idx, bool alloc, bool user)
     memset(next_level, 0, 0x1000);
 
     table[idx] = phys | PTE_PRESENT | PTE_WRITE | (user ? PTE_USER : 0);
-    pm_page_refcount_inc(pm_phys_to_page(PTE_ADDR_MASK((uintptr_t)table - HHDM)));
+    pt_children_inc(table);
 
     return next_level;
 }
@@ -59,17 +71,17 @@ int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t padd
     ASSERT(vaddr % size == 0);
     ASSERT(paddr % size == 0);
 
-    pte_t _prot = 0;
+    pte_t flags = 0;
     if (!prot.read) log(LOG_ERROR, "No-read mapping is not supported on x86_64!");
-    if (prot.write) _prot |= PTE_WRITE;
-    if (!prot.exec) _prot |= PTE_NX;
+    if (prot.write) flags |= PTE_WRITE;
+    if (!prot.exec) flags |= PTE_NX;
     const int attr_idx[] = {
         [VM_CACHE_STANDARD]      = 0,
         [VM_CACHE_WRITE_THROUGH] = 1,
         [VM_CACHE_WRITE_COMBINE] = 2,
         [VM_CACHE_NONE]          = 3,
     };
-    _prot = PTE_PAT_IDX(attr_idx[cache]);
+    flags |= PTE_PAT_IDX(attr_idx[cache]);
 
     bool is_user = vaddr < HHDM;
 
@@ -95,13 +107,15 @@ int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t padd
         table = next;
     }
 
+    // Leaf
+
     uint64_t leaf_idx = indices[target_level];
     ASSERT(!(table[leaf_idx] & PTE_PRESENT));
 
-    pm_page_refcount_inc(pm_phys_to_page(PTE_ADDR_MASK((uintptr_t)table - HHDM)));
-    pte_t entry = paddr | PTE_PRESENT | _prot | (is_user ? PTE_USER : 0);
+    pte_t entry = paddr | PTE_PRESENT | flags | (is_user ? PTE_USER : 0);
     if (target_level > 0)
         entry |= PTE_HUGE;
+    pt_children_inc(table);
 
     table[leaf_idx] = entry;
 
@@ -124,9 +138,7 @@ int arch_paging_unmap_page(arch_paging_map_t *map, uintptr_t vaddr)
     size_t level;
     for (level = 3; level >= 1; level--)
     {
-        size_t idx = indices[level];
-
-        pte_t entry = tables[level][idx];
+        pte_t entry = tables[level][indices[level]];
         if (!(entry & PTE_PRESENT)) // Not mapped, nothing to do.
             return -1;
         if (entry & PTE_HUGE) // Huge Page, end walk early.
@@ -137,25 +149,23 @@ int arch_paging_unmap_page(arch_paging_map_t *map, uintptr_t vaddr)
 
     // Clear the mapping
     size_t leaf_idx = indices[level];
+    if (!(tables[level][leaf_idx] & PTE_PRESENT))
+        return -1; // Not mapped, nothing to do.
+
     tables[level][leaf_idx] = 0;
-
     // Ascend
-    for (; level <= 3; level++)
+    while (level <= 3)
     {
-        uintptr_t table_phys = (uintptr_t)tables[level] - HHDM;
-
-        // Check if the table is empty.
-        if (!pm_page_refcount_dec(pm_phys_to_page(table_phys)))
+        if (!pt_children_dec(tables[level]))
             break;
 
-        // Don't free the PML4 (level 3).
-        if (level < 3)
-        {
-            size_t parent_idx = indices[level + 1];
-            tables[level + 1][parent_idx] = 0;
+        uintptr_t phys = (uintptr_t)tables[level] - HHDM;
 
-            pm_free(pm_phys_to_page(table_phys));
-        }
+        // Disconnect from parent before freeing child
+        level++;
+        tables[level][indices[level]] = 0;
+
+        pm_free(pm_phys_to_page(phys));
     }
 
     // Flush TLB

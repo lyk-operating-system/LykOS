@@ -28,6 +28,18 @@ struct arch_paging_map
 
 // Mapping and unmapping
 
+static inline void pt_children_inc(pte_t *table)
+{
+    page_t *p = pm_phys_to_page(((uintptr_t)table) - HHDM);
+    atomic_fetch_add_explicit(&p->children, 1, memory_order_relaxed);
+}
+
+static inline bool pt_children_dec(pte_t *table)
+{
+    page_t *p = pm_phys_to_page(((uintptr_t)table) - HHDM);
+    return atomic_fetch_sub_explicit(&p->children, 1, memory_order_relaxed) == 1;
+}
+
 static pte_t *get_next_level(pte_t *table, uint64_t idx, bool alloc, bool user)
 {
     if (table[idx] & PTE_VALID)
@@ -45,7 +57,7 @@ static pte_t *get_next_level(pte_t *table, uint64_t idx, bool alloc, bool user)
     memset(next_level, 0, 0x1000);
 
     table[idx] = phys | PTE_VALID | (user ? PTE_USER : 0);
-    pm_page_refcount_inc(pm_phys_to_page(PTE_ADDR_MASK((uintptr_t)table - HHDM)));
+    pt_children_inc(table);
 
     return next_level;
 }
@@ -97,9 +109,9 @@ int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t padd
     size_t leaf_idx = indices[target_level];
     ASSERT(!(table[leaf_idx] & PTE_VALID));
 
-    pm_page_refcount_inc(pm_phys_to_page(PTE_ADDR_MASK((uintptr_t)table - HHDM)));
     pte_t entry = paddr | PTE_VALID | _prot | PTE_ACCESS | (is_user ? PTE_USER : 0);
     entry |= (target_level == 3) ? PTE_PAGE_4K : PTE_BLOCK;
+    pt_children_inc(table);
 
     table[leaf_idx] = entry;
 
@@ -138,22 +150,18 @@ int arch_paging_unmap_page(arch_paging_map_t *map, uintptr_t vaddr)
     tables[level][leaf_idx] = 0;
 
     // Ascend
-    for (int l = (int)level; l >= 0; l--)
+    while (level <= 3)
     {
-        uintptr_t table_phys = (uintptr_t)tables[l] - HHDM;
-
-        // Check if the table is empty.
-        if (!pm_page_refcount_dec(pm_phys_to_page(table_phys)))
+        if (!pt_children_dec(tables[level]))
             break;
 
-        // Don't free the root table.
-        if (l > 0)
-        {
-            size_t parent_idx = indices[l - 1];
-            tables[l - 1][parent_idx] = 0;
+        uintptr_t phys = (uintptr_t)tables[level] - HHDM;
 
-            pm_free(pm_phys_to_page(table_phys));
-        }
+        // Disconnect from parent before freeing child
+        level++;
+        tables[level][indices[level]] = 0;
+
+        pm_free(pm_phys_to_page(phys));
     }
 
     // Flush TLB

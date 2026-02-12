@@ -16,24 +16,11 @@ typedef struct
     bool free;
 
     atomic_uint mapcount;
-    atomic_uint refcount;
+    atomic_uint children;
 
     list_node_t list_elem;
 }
 page_t;
-
-static inline void pm_page_refcount_inc(page_t *page)
-{
-    atomic_fetch_add_explicit(&page->refcount, 1, memory_order_relaxed);
-}
-
-/**
- * @return true if the refcount reached zero, false otherwise.
- */
-static inline bool pm_page_refcount_dec(page_t *page)
-{
-    return atomic_fetch_sub_explicit(&page->refcount, 1, memory_order_acq_rel) == 1;
-}
 
 /**
  * @brief Increment the number of mappings for this page.
