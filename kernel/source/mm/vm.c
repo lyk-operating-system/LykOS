@@ -203,8 +203,8 @@ int vm_map(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
                 heap_free(seg);
                 return ENOMEM;
             }
-
-            arch_paging_map_page(as->page_map, vaddr + i, page->addr, ARCH_PAGE_GRAN, prot);
+            // TODO: Handle actual protections
+            arch_paging_map_page(as->page_map, vaddr + i, page->addr, ARCH_PAGE_GRAN, VM_PROTECTION_FULL, VM_CACHE_STANDARD);
         }
     }
 
@@ -439,7 +439,8 @@ static void do_big_mappings(uintptr_t vaddr, uintptr_t paddr, size_t length)
             vaddr + i,
             paddr + i,
             page_size,
-            MM_PROT_EXEC | MM_PROT_WRITE
+            VM_PROTECTION_FULL,
+            VM_CACHE_STANDARD
         );
 
         i += page_size;

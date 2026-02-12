@@ -1,6 +1,5 @@
 #pragma once
 
-#include "log.h"
 #include "panic.h"
 
 /**

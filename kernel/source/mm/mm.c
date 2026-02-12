@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-void *memcpy(void *restrict dest, const void *restrict src, size_t n)
+void * __attribute__((weak)) memcpy(void *restrict dest, const void *restrict src, size_t n)
 {
     uint8_t *restrict d = dest;
     const uint8_t *restrict s = src;
@@ -26,7 +26,7 @@ void *memcpy(void *restrict dest, const void *restrict src, size_t n)
     return dest;
 }
 
-void *memmove(void *dest, const void *src, size_t n)
+void * __attribute__((weak)) memmove(void *dest, const void *src, size_t n)
 {
     uint8_t *d = dest;
     const uint8_t *s = src;
@@ -74,7 +74,7 @@ void *memmove(void *dest, const void *src, size_t n)
     return dest;
 }
 
-int memcmp(const void *s1, const void *s2, size_t n)
+int __attribute__((weak)) memcmp(const void *s1, const void *s2, size_t n)
 {
     const uint8_t *a = s1;
     const uint8_t *b = s2;
@@ -107,7 +107,7 @@ int memcmp(const void *s1, const void *s2, size_t n)
     return 0;
 }
 
-void *memset(void *dest, int c, size_t n)
+void * __attribute__((weak)) memset(void *dest, int c, size_t n)
 {
     uint8_t *p = dest;
     size_t v = (uint8_t)c;

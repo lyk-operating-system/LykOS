@@ -94,7 +94,7 @@ package/modules {
             --cross-file=$SOURCES_DIR/support/cross-files/kernel-$OPTION_arch.ini \
             --prefix=$PREFIX \
             -Darch=$OPTION_arch \
-            -Denabled_modules=test_module,pci,nvme \
+            -Denabled_modules=test_module,pci,ps2 \
             -Dkernel_include_dir=$SOURCES_DIR/kernel/include \
             $SOURCES_DIR/modules
     </sh>
@@ -116,7 +116,7 @@ custom/kernel {
     options: [ "arch" ]
     configure: <sh>
         meson setup \
-            --buildtype=release \
+            --buildtype=debug \
             --cross-file=$SOURCES_DIR/support/cross-files/kernel-$OPTION_arch.ini \
             --prefix=$PREFIX \
             -Darch=$OPTION_arch \
@@ -133,7 +133,7 @@ custom/kernel {
 custom/initrd {
     dependencies: [
         source/initrd
-        package/modules
+        package/apps package/modules
     ]
     build: <sh>
         cp -r $SOURCES_DIR/initrd .
