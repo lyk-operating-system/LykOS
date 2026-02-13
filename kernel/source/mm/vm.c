@@ -242,22 +242,12 @@ int vm_unmap(vm_addrspace_t *as, uintptr_t vaddr, size_t length)
  * Memory allocation
  */
 
-typedef struct
-{
-    size_t obj_size;
-}
-vm_alloc_hdr_t;
-
 void *vm_alloc(size_t size)
 {
-    size = CEIL(size + sizeof(vm_alloc_hdr_t), ARCH_PAGE_GRAN);
-
-    spinlock_acquire(&vm_kernel_as->slock);
+    size = CEIL(size, ARCH_PAGE_GRAN);
 
     uintptr_t out = 0;
     vm_map(vm_kernel_as, 0, size, MM_PROT_WRITE, VM_MAP_ANON | VM_MAP_POPULATE, NULL, 0, &out);
-
-    spinlock_release(&vm_kernel_as->slock);
 
     return out ? (void *)out : NULL;
 }
@@ -522,4 +512,77 @@ void vm_init()
     vm_addrspace_load(vm_kernel_as);
 
     log(LOG_INFO, "Virtual memory initialized.");
+}
+
+int vm_map_phys(vm_addrspace_t *as,
+                uintptr_t vaddr, uintptr_t paddr,
+                size_t length,
+                vm_protection_t prot,
+                vm_cache_t cache,
+                int flags,
+                uintptr_t *out)
+{
+    if (!as || !out || length == 0)
+        return EINVAL;
+
+    // Preserve physical offset, map whole pages
+    uintptr_t page_off  = paddr & (ARCH_PAGE_GRAN - 1);
+    uintptr_t phys_base = paddr & ~(ARCH_PAGE_GRAN - 1);
+
+    size_t map_len = CEIL(length + page_off, ARCH_PAGE_GRAN);
+
+    spinlock_acquire(&as->slock);
+
+    int ret = resolve_vaddr(as, vaddr, map_len, flags, &vaddr);
+    if (ret != EOK) {
+        spinlock_release(&as->slock);
+        return ret;
+    }
+
+    vm_segment_t *seg = heap_alloc(sizeof(vm_segment_t));
+    if (!seg) {
+        spinlock_release(&as->slock);
+        return ENOMEM;
+    }
+
+    *seg = (vm_segment_t){
+        .start  = vaddr,
+        .length = map_len,
+        .prot   = 0,          // seg->prot isn’t enforced by paging layer right now
+        .flags  = flags,
+        .vn     = NULL,
+        .offset = phys_base,  // store aligned phys base for debugging
+    };
+    insert_seg(as, seg);
+
+    // Map VA->PA
+    size_t mapped = 0;
+    for (; mapped < map_len; mapped += ARCH_PAGE_GRAN) {
+        uintptr_t va = vaddr + mapped;
+        uintptr_t pa = phys_base + mapped;
+
+        if (arch_paging_map_page(as->page_map, va, pa, ARCH_PAGE_GRAN, prot, cache) != 0) {
+            // rollback: unmap what we mapped
+            for (size_t undo = 0; undo < mapped; undo += ARCH_PAGE_GRAN)
+                arch_paging_unmap_page(as->page_map, vaddr + undo);
+
+            // remove seg from list (still holding lock)
+            FOREACH(n, as->segments) {
+                vm_segment_t *s = LIST_GET_CONTAINER(n, vm_segment_t, list_node);
+                if (s == seg) { list_remove(&as->segments, n); break; }
+            }
+            heap_free(seg);
+
+            spinlock_release(&as->slock);
+            return ENOMEM;
+        }
+
+        // Flush per page (safe + simple)
+        asm volatile("invlpg (%0)" :: "r"(va) : "memory");
+    }
+
+    spinlock_release(&as->slock);
+
+    *out = vaddr + page_off;
+    return EOK;
 }
