@@ -13,6 +13,17 @@
 #include "sync/spinlock.h"
 #include "utils/string.h"
 
+
+#define NVME_CC_OFF   0x14
+#define NVME_CSTS_OFF 0x1C
+
+#define CC_EN          (1u << 0)
+#define CC_CSS_SHIFT   4
+#define CC_MPS_SHIFT   7
+#define CC_AMS_SHIFT   11
+#define CC_IOSQES_SHIFT 16
+#define CC_IOCQES_SHIFT 20
+
 // --- HELPERS ---
 
 volatile nvme_cq_entry_t *nvme_poll_cq(nvme_t *nvme, nvme_queue_t *queue)
@@ -40,17 +51,14 @@ volatile nvme_cq_entry_t *nvme_poll_cq(nvme_t *nvme, nvme_queue_t *queue)
     return entry;
 }
 
-static inline uint32_t mmio_read32(volatile void *base, uintptr_t off)
+static inline uint32_t nvme_read_reg(volatile void *base, uintptr_t off)
 {
     return *(volatile uint32_t *)((uintptr_t)base + off);
 }
-static inline void mmio_write32(volatile void *base, uintptr_t off, uint32_t v)
+static inline void nvme_write_reg(volatile void *base, uintptr_t off, uint32_t v)
 {
     *(volatile uint32_t *)((uintptr_t)base + off) = v;
 }
-
-#define NVME_CC_OFF   0x14
-#define NVME_CSTS_OFF 0x1C
 
 static void nvme_wait_ready(nvme_t *nvme, bool ready)
 {
@@ -63,8 +71,8 @@ static void nvme_wait_ready(nvme_t *nvme, bool ready)
 
     if (timeout == 0)
     {
-        uint32_t csts = mmio_read32(nvme->registers, NVME_CSTS_OFF);
-        uint32_t cc   = mmio_read32(nvme->registers, NVME_CC_OFF);
+        uint32_t csts = nvme_read_reg(nvme->registers, NVME_CSTS_OFF);
+        uint32_t cc   = nvme_read_reg(nvme->registers, NVME_CC_OFF);
         log(LOG_ERROR, "wait_ready timeout want=%d CSTS=0x%08x CC=0x%08x", ready, csts, cc);
     }
 }
@@ -73,21 +81,12 @@ static void nvme_wait_ready(nvme_t *nvme, bool ready)
 
 void nvme_reset(nvme_t *nvme)
 {
-    log(LOG_DEBUG, "Entered reset func");
+    log(LOG_DEBUG, "Resetting...");
 
     // Spec wants: set EN=0 then wait RDY=0
     nvme->registers->CC.en = 0;
     nvme_wait_ready(nvme, false);
 }
-
-
-#define CC_EN          (1u << 0)
-#define CC_CSS_SHIFT   4
-#define CC_MPS_SHIFT   7
-#define CC_AMS_SHIFT   11
-#define CC_IOSQES_SHIFT 16
-#define CC_IOCQES_SHIFT 20
-
 
 void nvme_start(nvme_t *nvme)
 {
@@ -99,12 +98,11 @@ void nvme_start(nvme_t *nvme)
     cc |= (4u << CC_IOCQES_SHIFT);   // 16B
     cc |= CC_EN;
 
-    mmio_write32(nvme->registers, NVME_CC_OFF, cc);
-    (void)mmio_read32(nvme->registers, NVME_CC_OFF);
+    nvme_write_reg(nvme->registers, NVME_CC_OFF, cc);
+    (void)nvme_read_reg(nvme->registers, NVME_CC_OFF);
 
     nvme_wait_ready(nvme, true);
 }
-
 
 // --- ADMIN FUNCS ---
 
@@ -184,13 +182,6 @@ static uint16_t nvme_submit_admin_command(nvme_t *nvme, uint8_t opc, nvme_comman
 
     aq->sq[old_tail] = e;
 
-    volatile uint8_t *v_opc = (volatile uint8_t *)&aq->sq[old_tail].opc;
-    volatile uint8_t *p_opc = (volatile uint8_t *)(HHDM + aq->sq_dma.paddr + (old_tail * sizeof(nvme_sq_entry_t)));
-
-    log(LOG_DEBUG, "SQE opc via vaddr=%02x via HHDM(paddr)=%02x vaddr=%p paddr_alias=%p",
-        *v_opc, *p_opc, v_opc, p_opc);
-
-
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
 
     aq->tail = next_tail;
@@ -255,6 +246,8 @@ static void nvme_admin_wait_completion(nvme_t *nvme, uint16_t cid)
 
     nvme_queue_t *aq = nvme->admin_queue;
     volatile nvme_cq_entry_t *e0 = &aq->cq[aq->head];
+
+    // uh... keep all this debugging for now
     uint32_t dw3 = *(volatile uint32_t *)((volatile uint8_t *)e0 + 12);
 
     uint8_t  p   = (uint8_t)((dw3 >> 16) & 0x1u);
@@ -266,8 +259,6 @@ static void nvme_admin_wait_completion(nvme_t *nvme, uint16_t cid)
         "Admin cid=%u timed out. AQ head=%u tail=%u phase=%u CQ[head]: cid=%u DW3=0x%08x P=%u SCT=%u SC=0x%02x DNR=%u",
         cid, aq->head, aq->tail, aq->phase, e0->cid, dw3, p, sct, sc, dnr);
 }
-
-
 
 
 // --- ACTUAL COMMANDS ---
@@ -295,16 +286,28 @@ static void nvme_identify_controller(nvme_t *nvme)
 
     uint8_t *id = (uint8_t *)nvme->identity;
 
+    // TO-DO: Fix this bullshit
     uint16_t vid   = *(uint16_t *)(id + 0x000);
     uint16_t ssvid = *(uint16_t *)(id + 0x002);
     uint8_t  mdts  = *(uint8_t  *)(id + 0x04D);
     uint32_t nn    = *(uint32_t *)(id + 0x204);
 
-    // Version comes from MMIO register VS, not from id+0x008
     uint32_t vs    = nvme->registers->VS;
 
     log(LOG_INFO, "NVMe Identify: VID=%04x SSVID=%04x VS=0x%08x NN(max_nsid)=%u MDTS=%u",
         vid, ssvid, vs, nn, mdts);
+
+    char sn[21], mn[41], fr[9];
+    memcpy(sn, id + 0x004, 20); sn[20] = 0;
+    memcpy(mn, id + 0x018, 40); mn[40] = 0;
+    memcpy(fr, id + 0x040, 8);  fr[8]  = 0;
+
+    // trim trailing spaces
+    for (int i = 19; i >= 0 && sn[i] == ' '; i--) sn[i] = 0;
+    for (int i = 39; i >= 0 && mn[i] == ' '; i--) mn[i] = 0;
+    for (int i = 7;  i >= 0 && fr[i] == ' '; i--) fr[i] = 0;
+
+    log(LOG_INFO, "NVMe Identify: SN='%s' MN='%s' FR='%s'", sn, mn, fr);
 
     dma_free(&id_dma);
 }
@@ -350,7 +353,7 @@ static void nvme_identify_namespace(nvme_t *nvme)
 
 void nvme_init(volatile pci_header_type0_t *header)
 {
-    log(LOG_DEBUG, "Entered nvme init function.");
+    log(LOG_DEBUG, "Starting NVMe init...");
 
     volatile uint16_t *cmd = (volatile uint16_t *)((volatile uint8_t *)header + 0x04);
     uint16_t v = *cmd;
@@ -380,20 +383,8 @@ void nvme_init(volatile pci_header_type0_t *header)
     nvme->db_stride = 4u << cap->dstrd;
 
     nvme_reset(nvme);
-    log(LOG_DEBUG, "did escape reset");
     nvme_create_admin_queue(nvme);
-    log(LOG_DEBUG, "did create admin queue");
     nvme_start(nvme);
-    log(LOG_DEBUG, "did escape start");
-    log(LOG_INFO, "AQ: ASQ(p)=0x%llx ACQ(p)=0x%llx AQA.asqs=%u AQA.acqs=%u",
-        (unsigned long long)nvme->admin_queue->sq_dma.paddr,
-        (unsigned long long)nvme->admin_queue->cq_dma.paddr,
-        nvme->registers->AQA.asqs, nvme->registers->AQA.acqs);
-
-    log(LOG_INFO, "CSTS=0x%08x CC=0x%08x",
-        *(volatile uint32_t *)&nvme->registers->CSTS,
-        *(volatile uint32_t *)&nvme->registers->CC);
-
     nvme_identify_controller(nvme);
     nvme_identify_namespace(nvme);
 }
