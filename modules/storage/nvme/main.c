@@ -8,7 +8,7 @@
 
 static int nvme_probe(device_t *device)
 {
-    pci_header_type0_t *header = (pci_header_type0_t *) device->bus_data;
+    volatile pci_header_type0_t *header = (volatile pci_header_type0_t *) device->bus_data;
 
     log(LOG_DEBUG, "Probing device: class=%02X subclass=%02X",
         header->common.class, header->common.subclass);

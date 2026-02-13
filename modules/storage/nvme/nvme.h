@@ -157,7 +157,7 @@ typedef struct
 // NVMe Registers (main controller structure)
 typedef volatile struct
 {
-    uint64_t CAP;          // Controller Capabilities
+    nvme_cap_t CAP;          // Controller Capabilities
     uint32_t VS;           // Version
     uint32_t INTMS;        // Interrupt Mask Set
     uint32_t INTMC;        // Interrupt Mask Clear
@@ -241,11 +241,13 @@ typedef struct
     uint16_t sq_id;
 
     uint16_t cid;
-    uint16_t phase : 1;
-    uint16_t status : 15;
+    uint16_t status;
 }
 __attribute__((packed))
 nvme_cq_entry_t;
+
+#define NVME_CQE_PHASE(e)   ((uint16_t)((e)->status & 1u))
+#define NVME_CQE_STATUS(e)  ((uint16_t)((e)->status >> 1))
 
 static_assert(sizeof(nvme_cq_entry_t) == 16);
 // -----
@@ -254,7 +256,7 @@ static_assert(sizeof(nvme_cq_entry_t) == 16);
 typedef struct
 {
     nvme_sq_entry_t *sq;
-    nvme_cq_entry_t *cq;
+    volatile nvme_cq_entry_t *cq;
 
     dma_buf_t sq_dma;
     dma_buf_t cq_dma;
@@ -305,4 +307,4 @@ nvme_namespace_t;
 void nvme_reset(nvme_t *nvme);
 void nvme_start(nvme_t *nvme);
 
-void nvme_init(pci_header_type0_t *header);
+void nvme_init(volatile pci_header_type0_t *header);
