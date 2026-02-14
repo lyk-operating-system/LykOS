@@ -70,12 +70,10 @@ proc_t *init_load(vnode_t *file)
             uintptr_t out;
             int err = vm_map(
                 proc->as,
-                start,
-                diff,
-                MM_PROT_FULL,
+                start, diff,
+                VM_PROTECTION_FULL,
                 VM_MAP_ANON | VM_MAP_POPULATE | VM_MAP_FIXED | VM_MAP_PRIVATE,
-                NULL,
-                0,
+                NULL, 0,
                 &out
             );
             if (err != EOK || out != start)
