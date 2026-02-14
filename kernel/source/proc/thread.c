@@ -53,7 +53,8 @@ thread_t *thread_duplicate(thread_t *thread)
     thread_t *new_thread = heap_alloc(sizeof(thread_t));
     if (!new_thread)
         return NULL;
-    new_thread->context = thread->context; // TODO: check this
+    if (!arch_thread_context_copy(&new_thread->context, &thread->context))
+        goto cleanup;
     new_thread->tid = new_tid();
     new_thread->owner = NULL; // To be set by caller.
 
@@ -69,4 +70,9 @@ thread_t *thread_duplicate(thread_t *thread)
     new_thread->ref_count = 1;
 
     return new_thread;
+
+cleanup:
+    heap_free(new_thread);
+
+    return NULL;
 }

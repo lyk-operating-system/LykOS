@@ -19,4 +19,7 @@ __attribute__((packed))
 arch_thread_context_t;
 
 void arch_thread_context_init(arch_thread_context_t *context, vm_addrspace_t *as, bool user, uintptr_t entry);
+
+bool arch_thread_context_copy(arch_thread_context_t *dest, arch_thread_context_t *src);
+
 void arch_thread_context_switch(arch_thread_context_t *curr, arch_thread_context_t *next);

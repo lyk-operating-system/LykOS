@@ -18,6 +18,35 @@ sys_ret_t syscall_exit(int code)
     unreachable();
 }
 
+sys_ret_t syscall_fork()
+{
+    log(LOG_DEBUG, "Process forked.");
+
+    proc_fork(sys_curr_proc());
+
+    return (sys_ret_t) {0, EOK};
+}
+
+sys_ret_t syscall_get_cwd()
+{
+    return (sys_ret_t) {-1, EOK};
+}
+
+sys_ret_t syscall_get_pid()
+{
+    return (sys_ret_t) {sys_curr_proc()->pid, EOK};
+}
+
+sys_ret_t syscall_get_ppid()
+{
+    return (sys_ret_t) {sys_curr_proc()->ppid, EOK};
+}
+
+sys_ret_t syscall_get_tid()
+{
+    return (sys_ret_t) {sys_curr_thread()->tid, EOK};
+}
+
 sys_ret_t syscall_tcb_set(void *ptr)
 {
     arch_syscall_tcb_set(ptr);

@@ -89,8 +89,34 @@ void arch_thread_context_init(arch_thread_context_t *context, vm_addrspace_t *as
     }
 
     uint8_t order = pm_pagecount_to_order(CEIL(x86_64_fpu_area_size, ARCH_PAGE_GRAN) / ARCH_PAGE_GRAN);
-    context->fpu_area = (void*)(pm_alloc(order)->addr + HHDM);
+    context->fpu_area = (void *)(pm_alloc(order)->addr + HHDM);
     memset(context->fpu_area, 0, x86_64_fpu_area_size);
+}
+
+bool arch_thread_context_copy(arch_thread_context_t *dest, arch_thread_context_t *src)
+{
+    dest->self = dest;
+    dest->fs = src->fs;
+    dest->gs = src->gs;
+
+    dest->kernel_stack = pm_alloc(0)->addr + HHDM + ARCH_PAGE_GRAN;
+    dest->rsp = dest->kernel_stack - (src->kernel_stack - src->rsp);
+    memcpy(
+        (void *)(dest->kernel_stack - ARCH_PAGE_GRAN),
+        (void *)(src->kernel_stack - ARCH_PAGE_GRAN),
+        ARCH_PAGE_GRAN
+    );
+
+    if (src->fpu_area)
+    {
+        uint8_t order = pm_pagecount_to_order(CEIL(x86_64_fpu_area_size, ARCH_PAGE_GRAN) / ARCH_PAGE_GRAN);
+        dest->fpu_area = (void *)(pm_alloc(order)->addr + HHDM);
+        memcpy(dest->fpu_area, src->fpu_area, x86_64_fpu_area_size);
+    }
+
+    dest->syscall_stack = src->syscall_stack;
+
+    return true;
 }
 
 void arch_thread_context_switch(arch_thread_context_t *curr, arch_thread_context_t *next)
