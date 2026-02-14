@@ -191,33 +191,6 @@ static uint16_t nvme_submit_admin_command(nvme_t *nvme, uint8_t opc, nvme_comman
     return cid;
 }
 
-// static void nvme_admin_wait_completion(nvme_t *nvme, uint16_t cid)
-// {
-//     nvme_cap_t cap = nvme->registers->CAP;
-//     uint64_t timeout = (uint64_t)(cap.to ? cap.to : 1) * 5000000ull;
-
-//     while (timeout--)
-//     {
-//         volatile nvme_cq_entry_t *entry = nvme_poll_cq(nvme, nvme->admin_queue);
-//         if (entry && entry->cid == cid)
-//         {
-//             if (entry->status != 0)
-//                 log(LOG_ERROR, "Admin cid=%u failed status=0x%x", cid, entry->status);
-//             return;
-//         }
-//     }
-
-//     nvme_queue_t *aq = nvme->admin_queue;
-//     volatile nvme_cq_entry_t *e0 = &aq->cq[aq->head];
-//     //uint32_t sq_db = NVME_SQ_TDBL(nvme->registers, 0, nvme->db_stride);
-//     //uint32_t cq_db = NVME_CQ_HDBL(nvme->registers, 0, nvme->db_stride);
-
-//     log(LOG_ERROR,
-//         "Admin cid=%u timed out. AQ head=%u tail=%u phase=%u CQ[head]: cid=%u st=0x%x ph=%u sqh=%u sqid=%u status_p=0x%04x",
-//         cid, aq->head, aq->tail, aq->phase,
-//         e0->cid, NVME_CQE_STATUS(e0), NVME_CQE_PHASE(e0), e0->sq_head, e0->sq_id, e0->status);
-// }
-
 static void nvme_admin_wait_completion(nvme_t *nvme, uint16_t cid)
 {
     nvme_cap_t cap = nvme->registers->CAP;
@@ -258,6 +231,77 @@ static void nvme_admin_wait_completion(nvme_t *nvme, uint16_t cid)
     log(LOG_ERROR,
         "Admin cid=%u timed out. AQ head=%u tail=%u phase=%u CQ[head]: cid=%u DW3=0x%08x P=%u SCT=%u SC=0x%02x DNR=%u",
         cid, aq->head, aq->tail, aq->phase, e0->cid, dw3, p, sct, sc, dnr);
+}
+
+// --- IO AND IRQ ---
+
+static void nvme_create_io_queue(nvme_t *nvme)
+{
+    const uint16_t qid = 1;
+
+    size_t sq_size = NVME_IO_QUEUE_DEPTH * sizeof(nvme_sq_entry_t);
+    size_t cq_size = NVME_IO_QUEUE_DEPTH * sizeof(nvme_cq_entry_t);
+
+    nvme_queue_t *ioq = vm_alloc(sizeof(nvme_queue_t));
+    memset(ioq, 0, sizeof(nvme_queue_t));
+    nvme->io_queue = ioq;
+
+    ioq->sq_dma = dma_alloc(sq_size);
+    ioq->cq_dma = dma_alloc(cq_size);
+
+    ioq->sq = (nvme_sq_entry_t *)ioq->sq_dma.vaddr;
+    ioq->cq = (volatile nvme_cq_entry_t *)ioq->cq_dma.vaddr;
+
+    memset(ioq->sq_dma.vaddr, 0, sq_size);
+    memset(ioq->cq_dma.vaddr, 0, cq_size);
+
+    ioq->qid = qid; // TO-DO: change, hard-coded for now
+    ioq->depth = NVME_IO_QUEUE_DEPTH;
+    ioq->head = 0;
+    ioq->tail = 0;
+    ioq->phase = 1;
+    ioq->next_cid = 0;
+    memset(ioq->cid_used, 0, sizeof(ioq->cid_used));
+    ioq->lock = SPINLOCK_INIT;
+
+    // creating completion & submission queues
+    /* source: https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-Revision-2.3-2025.08.01-Ratified.pdf
+       5.3.1 - 5.3.2 */
+    // ------------
+
+    // send admin command to create completion queue
+    nvme_command_t cqc = (nvme_command_t){0};
+    cqc.dptr.prp1 = ioq->cq_dma.paddr;
+    cqc.cdw10 = ((uint32_t)qid) | ((uint32_t)(NVME_IO_QUEUE_DEPTH - 1) << 16);
+
+    uint32_t iv = 0;
+    uint32_t ien = 0;
+    uint32_t pc = 1;
+    cqc.cdw11 = (pc & 1u) | ((ien & 1u) << 1) | ((iv & 0xFFFFu) << 16);
+
+    uint16_t cid = nvme_submit_admin_command(nvme, 0x05, cqc);
+    if (cid != UINT16_MAX) nvme_admin_wait_completion(nvme, cid);
+
+    // send admin command to create submission queue
+    nvme_command_t sqc = (nvme_command_t){0};
+    sqc.dptr.prp1 = ioq->sq_dma.paddr;
+    sqc.cdw10 = ((uint32_t)qid) | ((uint32_t)(NVME_IO_QUEUE_DEPTH - 1) << 16);
+
+    uint32_t cqid = qid;
+    uint32_t qprio = 0;
+    sqc.cdw11 = (pc & 1u) | ((qprio & 3u) << 1) | ((cqid & 0xFFFFu) << 16);
+
+    cid = nvme_submit_admin_command(nvme, 0x01, sqc);
+    if (cid != UINT16_MAX) nvme_admin_wait_completion(nvme, cid);
+
+    // doorbells init
+    NVME_SQ_TDBL(nvme->registers, qid, nvme->db_stride) = 0;
+    NVME_CQ_HDBL(nvme->registers, qid, nvme->db_stride) = 0;
+
+    log(LOG_INFO, "Created IO QP qid=%u depth=%u SQ(p)=0x%llx CQ(p)=0x%llx",
+        qid, NVME_IO_QUEUE_DEPTH,
+        (unsigned long long)ioq->sq_dma.paddr,
+        (unsigned long long)ioq->cq_dma.paddr);
 }
 
 
@@ -411,5 +455,6 @@ void nvme_init(volatile pci_header_type0_t *header)
     nvme_create_admin_queue(nvme);
     nvme_start(nvme);
     nvme_identify_controller(nvme);
-    nvme_identify_namespace(nvme);
+    nvme_create_io_queue(nvme);
+    // nvme_identify_namespace(nvme);
 }
