@@ -329,24 +329,49 @@ static void nvme_identify_namespace(nvme_t *nvme)
     ASSERT(nvme);
     ASSERT(nvme->identity);
 
-    uint32_t nn = nvme->identity->nn;
-    for (uint32_t nsid = 1; nsid <= nn; nsid++)
+    // get active NSID list
+    dma_buf_t list_dma = dma_alloc(4096);
+    memset(list_dma.vaddr, 0, 4096);
+
+    nvme_command_t list_cmd = (nvme_command_t){0};
+    list_cmd.dptr.prp1 = list_dma.paddr;
+    list_cmd.cdw10 = 0x02; // CNS=2 - active namespace ID list
+    list_cmd.nsid = 0;
+
+    uint16_t list_cid = nvme_submit_admin_command(nvme, 0x06, list_cmd);
+    if (list_cid != UINT16_MAX)
+        nvme_admin_wait_completion(nvme, list_cid);
+
+    uint32_t *nsids = (uint32_t *)list_dma.vaddr;
+
+    for (uint32_t i = 0; i < 1024; i++)
     {
+        uint32_t nsid = nsids[i];
+        if (nsid == 0) break;
+
         dma_buf_t ns_dma = dma_alloc(sizeof(nvme_nsidn_t));
         memset(ns_dma.vaddr, 0, sizeof(nvme_nsidn_t));
 
         nvme_command_t identify_ns = (nvme_command_t){
             .nsid = nsid,
             .dptr.prp1 = ns_dma.paddr,
-            .cdw10 = 0x00
+            .cdw10 = 0x00 // CNS=0 - identify namespace
         };
 
         uint16_t cid = nvme_submit_admin_command(nvme, 0x06, identify_ns);
         if (cid != UINT16_MAX)
             nvme_admin_wait_completion(nvme, cid);
 
+        nvme_nsidn_t *ns = (nvme_nsidn_t *)ns_dma.vaddr;
+               log(LOG_INFO, "Namespace Identify: NSID=%u NSZE=%llu NCAP=%llu FLBAS=0x%02x",
+                   nsid,
+                   (unsigned long long)ns->nsze,
+                   (unsigned long long)ns->ncap,
+                   (unsigned)ns->flbas);
+
         dma_free(&ns_dma);
     }
+    dma_free(&list_dma);
 }
 
 // --- INIT ---
