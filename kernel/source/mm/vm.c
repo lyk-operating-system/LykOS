@@ -22,7 +22,39 @@
 
 vm_addrspace_t *vm_kernel_as;
 
-// Segment utils
+extern vm_object_ops_t anon_ops;
+extern vm_object_ops_t vnode_ops;
+extern vm_object_ops_t phys_ops;
+
+static vm_object_ops_t *ops_table[] = {
+    [VM_OBJ_ANON]  = &anon_ops,
+    [VM_OBJ_PHYS]  = &phys_ops,
+};
+
+/*
+ * Object utils
+ */
+
+vm_object_t *vm_object_create(vm_object_type_t type, size_t size)
+{
+    vm_object_t *obj = heap_alloc(sizeof(vm_object_t));
+    if (!obj)
+        return NULL;
+
+    obj->type = type;
+    obj->size = size;
+    obj->cached_pages = XARRAY_INIT;
+    obj->ops = ops_table[type];
+    memset(&obj->source, 0, sizeof(obj->source));
+    obj->slock = SPINLOCK_INIT;
+    ref_init(&obj->refcount);
+
+    return obj;
+}
+
+/*
+ * Segment utils
+ */
 
 static vm_segment_t *check_collision(vm_addrspace_t *as, uintptr_t base, size_t length)
 {
@@ -155,8 +187,8 @@ static int resolve_vaddr(vm_addrspace_t *as, uintptr_t vaddr, uintptr_t length, 
 }
 
 int vm_map(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
-           int prot, int flags,
-           vnode_t *vn, uintptr_t offset,
+           vm_protection_t prot, int flags,
+           vm_object_t *obj, size_t offset,
            uintptr_t *out)
 {
     spinlock_acquire(&as->slock);
@@ -168,6 +200,19 @@ int vm_map(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
         spinlock_release(&as->slock);
         return ret;
     }
+
+    // Manage assigned object
+    if (!obj) // anon
+    {
+        obj = vm_object_create(VM_OBJ_ANON, length);
+        if (!obj)
+        {
+            spinlock_release(&as->slock);
+            return ENOMEM;
+        }
+    }
+    else
+        ref_get(&obj->refcount);
 
     // Initialize and insert the segment.
     vm_segment_t *seg = heap_alloc(sizeof(vm_segment_t));
@@ -181,30 +226,23 @@ int vm_map(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
         .length = length,
         .prot = prot,
         .flags = flags,
-        .vn = vn,
+        .object = obj,
         .offset = offset
     };
     insert_seg(as, seg);
 
-    for (size_t i = 0; i < length; i += ARCH_PAGE_GRAN)
+    if (flags & VM_MAP_POPULATE)
     {
-        if (vn) // VNode backed
+        for (size_t i = 0; i < length; i += ARCH_PAGE_GRAN)
         {
-            if (vn->ops && vn->ops->mmap)
-                return vn->ops->mmap(vn, as, vaddr, length, prot, flags, offset);
-            else
-                return ENOTSUP;
-        }
-        else // Anon
-        {
-            page_t *page = pm_alloc(0);
+            uintptr_t curr_addr = vaddr + i;
+            size_t curr_off = offset + i;
+
+            page_t *page = obj->ops->fault(obj, curr_off, curr_addr, VM_FAULT_WRITE);
             if (!page)
-            {
-                heap_free(seg);
-                return ENOMEM;
-            }
-            // TODO: Handle actual protections
-            arch_paging_map_page(as->page_map, vaddr + i, page->addr, ARCH_PAGE_GRAN, VM_PROTECTION_FULL, VM_CACHE_STANDARD);
+                panic("Fault handler failed!");
+
+            arch_paging_map_page(as->page_map, curr_addr, page->addr, ARCH_PAGE_GRAN, prot, VM_CACHE_STANDARD);
         }
     }
 
@@ -255,7 +293,13 @@ void *vm_alloc(size_t size)
     spinlock_acquire(&vm_kernel_as->slock);
 
     uintptr_t out = 0;
-    vm_map(vm_kernel_as, 0, size, MM_PROT_WRITE, VM_MAP_ANON | VM_MAP_POPULATE, NULL, 0, &out);
+    vm_map(
+        vm_kernel_as,
+        0, size,
+        (vm_protection_t) {.write = 1}, VM_MAP_ANON | VM_MAP_POPULATE,
+        NULL, 0,
+        &out
+    );
 
     spinlock_release(&vm_kernel_as->slock);
 
@@ -373,23 +417,24 @@ void vm_addrspace_destroy(vm_addrspace_t *as)
 
 vm_addrspace_t *vm_addrspace_clone(vm_addrspace_t *parent_as)
 {
-    // vm_addrspace_t *child_as = vm_addrspace_create();
+    vm_addrspace_t *child_as = vm_addrspace_create();
+    child_as->limit_low = parent_as->limit_low;
+    child_as->limit_high = parent_as->limit_high;
 
-    // child_as->limit_low = parent_as->limit_low;
-    // child_as->limit_high = parent_as->limit_high;
-
-    // spinlock_acquire(&parent_as->slock);
+    spinlock_acquire(&parent_as->slock);
 
     // FOREACH(node, parent_as->segments)
     // {
     //     vm_segment_t *parent_seg = LIST_GET_CONTAINER(node, vm_segment_t, list_node);
 
     //     uintptr_t child_addr;
-    //     vm_map(child_as, parent_seg->start, parent_seg->length,
-    //             parent_seg->prot,
-    //             parent_seg->flags, parent_seg->vn, parent_seg->offset,
-    //             &child_addr
-    //             );
+    //     vm_map(
+    //         child_as,
+    //         parent_seg->start, parent_seg->length,
+    //         parent_seg->prot, parent_seg->flags,
+    //         parent_seg->vn, parent_seg->offset,
+    //         &child_addr
+    //     );
 
     //     size_t copy_size = parent_seg->length;
     //     void *temp = heap_alloc(copy_size);
@@ -403,9 +448,9 @@ vm_addrspace_t *vm_addrspace_clone(vm_addrspace_t *parent_as)
     //     heap_free(temp);
     // }
 
-    // spinlock_release(&parent_as->slock);
+    spinlock_release(&parent_as->slock);
 
-    // return child_as;
+    return child_as;
     return NULL;
 }
 
