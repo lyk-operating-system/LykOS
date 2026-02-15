@@ -11,7 +11,12 @@
 #include "utils/string.h"
 #include <stdint.h>
 
+// TO-DO: Change this to get max depth from controller
 #define NVME_ADMIN_QUEUE_DEPTH 64
+#define NVME_IO_QUEUE_DEPTH 64
+
+#define NVME_CQE_PHASE(e)   ((uint16_t)((e)->status & 1u))
+#define NVME_CQE_STATUS(e)  ((uint16_t)((e)->status >> 1))
 
 // Doorbell Macros
 #define NVME_SQ_TDBL(base, qid, stride) \
@@ -245,9 +250,6 @@ typedef struct
 }
 __attribute__((packed))
 nvme_cq_entry_t;
-
-#define NVME_CQE_PHASE(e)   ((uint16_t)((e)->status & 1u))
-#define NVME_CQE_STATUS(e)  ((uint16_t)((e)->status >> 1))
 
 static_assert(sizeof(nvme_cq_entry_t) == 16);
 // -----

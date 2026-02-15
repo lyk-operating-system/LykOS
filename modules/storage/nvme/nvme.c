@@ -1,4 +1,5 @@
 #include "mm/dma.h"
+#include "mm/heap.h"
 #include "mm/vm.h"
 #include <stdint.h>
 #define LOG_PREFIX "NVME"
@@ -140,37 +141,39 @@ static void nvme_create_admin_queue(nvme_t *nvme)
     nvme->registers->ACQ = aq->cq_dma.paddr;
 }
 
-static uint16_t nvme_submit_admin_command(nvme_t *nvme, uint8_t opc, nvme_command_t command)
-{
-    nvme_queue_t *aq = nvme->admin_queue;
+// --- COMMAND FUNCTIONS ---
 
-    spinlock_acquire(&aq->lock);
+static uint16_t nvme_submit_command(nvme_t *nvme, uint8_t opc, nvme_command_t command, nvme_queue_t *q)
+{
+    // nvme_queue_t *q = nvme->admin_queue;
+
+    spinlock_acquire(&q->lock);
 
     uint16_t cid = UINT16_MAX;
-    for (uint16_t i = 0; i < aq->depth; i++)
+    for (uint16_t i = 0; i < q->depth; i++)
     {
-        uint16_t try = (aq->next_cid + i) % aq->depth;
-        if (!aq->cid_used[try])
+        uint16_t try = (q->next_cid + i) % q->depth;
+        if (!q->cid_used[try])
         {
             cid = try;
-            aq->cid_used[try] = true;
-            aq->next_cid = (try + 1) % aq->depth;
+            q->cid_used[try] = true;
+            q->next_cid = (try + 1) % q->depth;
             break;
         }
     }
 
     if (cid == UINT16_MAX)
     {
-        spinlock_release(&aq->lock);
+        spinlock_release(&q->lock);
         return UINT16_MAX;
     }
 
-    uint16_t old_tail = aq->tail;
-    uint16_t next_tail = (aq->tail + 1) % aq->depth;
-    if (next_tail == aq->head)
+    uint16_t old_tail = q->tail;
+    uint16_t next_tail = (q->tail + 1) % q->depth;
+    if (next_tail == q->head)
     {
-        aq->cid_used[cid] = false;
-        spinlock_release(&aq->lock);
+        q->cid_used[cid] = false;
+        spinlock_release(&q->lock);
         return UINT16_MAX;
     }
 
@@ -180,25 +183,25 @@ static uint16_t nvme_submit_admin_command(nvme_t *nvme, uint8_t opc, nvme_comman
     e.psdt = 0;
     e.command = command;
 
-    aq->sq[old_tail] = e;
+    q->sq[old_tail] = e;
 
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
 
-    aq->tail = next_tail;
-    NVME_SQ_TDBL(nvme->registers, aq->qid, nvme->db_stride) = aq->tail;
+    q->tail = next_tail;
+    NVME_SQ_TDBL(nvme->registers, q->qid, nvme->db_stride) = q->tail;
 
-    spinlock_release(&aq->lock);
+    spinlock_release(&q->lock);
     return cid;
 }
 
-static void nvme_admin_wait_completion(nvme_t *nvme, uint16_t cid)
+static void nvme_wait_completion(nvme_t *nvme, uint16_t cid, nvme_queue_t *q)
 {
     nvme_cap_t cap = nvme->registers->CAP;
     uint64_t timeout = (uint64_t)(cap.to ? cap.to : 1) * 5000000ull;
 
     while (timeout--)
     {
-        volatile nvme_cq_entry_t *entry = nvme_poll_cq(nvme, nvme->admin_queue);
+        volatile nvme_cq_entry_t *entry = nvme_poll_cq(nvme, q);
         if (entry && entry->cid == cid)
         {
             // Read raw DW3 of CQE (bytes 12..15). This avoids any bitfield/layout issues.
@@ -210,15 +213,14 @@ static void nvme_admin_wait_completion(nvme_t *nvme, uint16_t cid)
             uint8_t  dnr = (uint8_t)((dw3 >> 31) & 0x1u);
 
             if (sct != 0 || sc != 0)
-                log(LOG_ERROR, "Admin cid=%u failed: SCT=%u SC=0x%02x DNR=%u DW3=0x%08x P=%u",
+                log(LOG_ERROR, "cid=%u failed: SCT=%u SC=0x%02x DNR=%u DW3=0x%08x P=%u",
                     cid, sct, sc, dnr, dw3, p);
 
             return;
         }
     }
 
-    nvme_queue_t *aq = nvme->admin_queue;
-    volatile nvme_cq_entry_t *e0 = &aq->cq[aq->head];
+    volatile nvme_cq_entry_t *e0 = &q->cq[q->head];
 
     // uh... keep all this debugging for now
     uint32_t dw3 = *(volatile uint32_t *)((volatile uint8_t *)e0 + 12);
@@ -229,15 +231,15 @@ static void nvme_admin_wait_completion(nvme_t *nvme, uint16_t cid)
     uint8_t  dnr = (uint8_t)((dw3 >> 31) & 0x1u);
 
     log(LOG_ERROR,
-        "Admin cid=%u timed out. AQ head=%u tail=%u phase=%u CQ[head]: cid=%u DW3=0x%08x P=%u SCT=%u SC=0x%02x DNR=%u",
-        cid, aq->head, aq->tail, aq->phase, e0->cid, dw3, p, sct, sc, dnr);
+        "cid=%u timed out. Queue head=%u tail=%u phase=%u CQ[head]: cid=%u DW3=0x%08x P=%u SCT=%u SC=0x%02x DNR=%u",
+        cid, q->head, q->tail, q->phase, e0->cid, dw3, p, sct, sc, dnr);
 }
 
 // --- IO AND IRQ ---
 
 static void nvme_create_io_queue(nvme_t *nvme)
 {
-    const uint16_t qid = 1;
+    const uint16_t qid = 1; // TO-DO: change, hard-coded for now
 
     size_t sq_size = NVME_IO_QUEUE_DEPTH * sizeof(nvme_sq_entry_t);
     size_t cq_size = NVME_IO_QUEUE_DEPTH * sizeof(nvme_cq_entry_t);
@@ -255,7 +257,7 @@ static void nvme_create_io_queue(nvme_t *nvme)
     memset(ioq->sq_dma.vaddr, 0, sq_size);
     memset(ioq->cq_dma.vaddr, 0, cq_size);
 
-    ioq->qid = qid; // TO-DO: change, hard-coded for now
+    ioq->qid = qid;
     ioq->depth = NVME_IO_QUEUE_DEPTH;
     ioq->head = 0;
     ioq->tail = 0;
@@ -279,8 +281,8 @@ static void nvme_create_io_queue(nvme_t *nvme)
     uint32_t pc = 1;
     cqc.cdw11 = (pc & 1u) | ((ien & 1u) << 1) | ((iv & 0xFFFFu) << 16);
 
-    uint16_t cid = nvme_submit_admin_command(nvme, 0x05, cqc);
-    if (cid != UINT16_MAX) nvme_admin_wait_completion(nvme, cid);
+    uint16_t cid = nvme_submit_command(nvme, 0x05, cqc, nvme->admin_queue);
+    if (cid != UINT16_MAX) nvme_wait_completion(nvme, cid, nvme->admin_queue);
 
     // send admin command to create submission queue
     nvme_command_t sqc = (nvme_command_t){0};
@@ -288,11 +290,11 @@ static void nvme_create_io_queue(nvme_t *nvme)
     sqc.cdw10 = ((uint32_t)qid) | ((uint32_t)(NVME_IO_QUEUE_DEPTH - 1) << 16);
 
     uint32_t cqid = qid;
-    uint32_t qprio = 0;
+    uint32_t qprio = 0; // TO-DO: handle priority and stuff
     sqc.cdw11 = (pc & 1u) | ((qprio & 3u) << 1) | ((cqid & 0xFFFFu) << 16);
 
-    cid = nvme_submit_admin_command(nvme, 0x01, sqc);
-    if (cid != UINT16_MAX) nvme_admin_wait_completion(nvme, cid);
+    cid = nvme_submit_command(nvme, 0x01, sqc, nvme->admin_queue);
+    if (cid != UINT16_MAX) nvme_wait_completion(nvme, cid, nvme->admin_queue);
 
     // doorbells init
     NVME_SQ_TDBL(nvme->registers, qid, nvme->db_stride) = 0;
@@ -303,7 +305,6 @@ static void nvme_create_io_queue(nvme_t *nvme)
         (unsigned long long)ioq->sq_dma.paddr,
         (unsigned long long)ioq->cq_dma.paddr);
 }
-
 
 // --- ACTUAL COMMANDS ---
 
@@ -321,9 +322,9 @@ static void nvme_identify_controller(nvme_t *nvme)
     cmd.dptr.prp1 = id_dma.paddr;
     cmd.cdw10 = 1;
 
-    uint16_t cid = nvme_submit_admin_command(nvme, 0x06, cmd);
+    uint16_t cid = nvme_submit_command(nvme, 0x06, cmd, nvme->admin_queue);
     if (cid != UINT16_MAX)
-        nvme_admin_wait_completion(nvme, cid);
+        nvme_wait_completion(nvme, cid, nvme->admin_queue);
 
     nvme->identity = (nvme_cid_t *)vm_alloc(4096);
     memcpy(nvme->identity, id_dma.vaddr, 4096);
@@ -358,7 +359,59 @@ static void nvme_identify_controller(nvme_t *nvme)
 
 int nvme_read(drive_t *d, const void *buf, uint64_t lba, uint64_t count)
 {
-    (void)d; (void)buf; (void)lba; (void)count;
+    nvme_namespace_t *ns = (nvme_namespace_t*)d->device.driver_data;
+    nvme_t *nvme = ns->controller;
+    nvme_queue_t *ioq = nvme->io_queue;
+
+    uint8_t *out = (uint8_t *)(uintptr_t)buf; // why
+    dma_buf_t dma = dma_alloc(4096); // single 4k dma page for prp1-only for now
+
+    uint64_t remaining = count;
+    uint64_t cur_lba = lba;
+
+    while (remaining)
+    {
+        //how many LBAs fit in one PRP1 page?
+        uint64_t max_blocks = 4096ull / (uint64_t)ns->lba_size;
+        if (max_blocks == 0)
+        {
+            dma_free(&dma);
+            return -1;
+        }
+
+        uint64_t blocks = (remaining < max_blocks) ? remaining : max_blocks;
+        uint64_t bytes  = blocks * (uint64_t)ns->lba_size;
+
+        memset(dma.vaddr, 0, 4096);
+
+        // create NVME read command
+        nvme_command_t cmd = (nvme_command_t){0};
+        cmd.nsid = ns->nsid;
+        cmd.dptr.prp1 = dma.paddr;
+        cmd.dptr.prp2 = 0;
+
+        // explain
+        cmd.cdw10 = (uint32_t)(cur_lba & 0xFFFFFFFFu);
+        cmd.cdw11 = (uint32_t)(cur_lba >> 32);
+        cmd.cdw12 = (uint32_t)(((blocks - 1) & 0xFFFFu)); // NLB = blocks-1
+
+        uint16_t cid = nvme_submit_command(nvme, 0x02, cmd, ioq);
+        if (cid == UINT16_MAX)
+        {
+            dma_free(&dma);
+            return -1;
+        }
+        nvme_wait_completion(nvme, cid, ioq);
+
+        memcpy(out, dma.vaddr, (size_t)bytes);
+
+        out += bytes;
+        cur_lba += blocks;
+        remaining -= blocks;
+
+    }
+
+    dma_free(&dma);
     return 0;
 }
 
@@ -382,9 +435,9 @@ static void nvme_identify_namespace(nvme_t *nvme)
     list_cmd.cdw10 = 0x02; // CNS=2 - active namespace ID list
     list_cmd.nsid = 0;
 
-    uint16_t list_cid = nvme_submit_admin_command(nvme, 0x06, list_cmd);
+    uint16_t list_cid = nvme_submit_command(nvme, 0x06, list_cmd, nvme->admin_queue);
     if (list_cid != UINT16_MAX)
-        nvme_admin_wait_completion(nvme, list_cid);
+        nvme_wait_completion(nvme, list_cid, nvme->admin_queue);
 
     uint32_t *nsids = (uint32_t *)list_dma.vaddr;
 
@@ -402,16 +455,64 @@ static void nvme_identify_namespace(nvme_t *nvme)
             .cdw10 = 0x00 // CNS=0 - identify namespace
         };
 
-        uint16_t cid = nvme_submit_admin_command(nvme, 0x06, identify_ns);
+        uint16_t cid = nvme_submit_command(nvme, 0x06, identify_ns, nvme->admin_queue);
         if (cid != UINT16_MAX)
-            nvme_admin_wait_completion(nvme, cid);
+            nvme_wait_completion(nvme, cid, nvme->admin_queue);
 
+        // LOGGING
         nvme_nsidn_t *ns = (nvme_nsidn_t *)ns_dma.vaddr;
                log(LOG_INFO, "Namespace Identify: NSID=%u NSZE=%llu NCAP=%llu FLBAS=0x%02x",
                    nsid,
                    (unsigned long long)ns->nsze,
                    (unsigned long long)ns->ncap,
                    (unsigned)ns->flbas);
+
+        // add namespace as storage drive
+        // create namespace object
+        uint8_t  idx   = ns->flbas & 0x0F;
+        uint8_t  lbads = *(uint8_t  *)(ns + 0x80 + idx * 16 + 2);
+        uint32_t lba_size = 1u << lbads;
+
+        nvme_namespace_t *nsobj = heap_alloc(sizeof(nvme_namespace_t)); // TO-DO: free this at some point
+        memset(nsobj, 0, sizeof(*nsobj));
+        nsobj->controller = nvme;
+        nsobj->nsid = nsid;
+        nsobj->lba_count = ns->ncap;
+        nsobj->lba_size = lba_size;
+
+        // create drive object
+        drive_t *d = drive_create(DRIVE_TYPE_NVME);
+
+        d->sector_size = nsobj->lba_size;
+        d->sectors = nsobj->lba_count;
+
+        d->serial = nvme->identity->sn;
+        d->model = nvme->identity->mn;
+        d->vendor = "NVMe";
+        d->revision = NULL;
+
+        d->read_sectors = nvme_read;
+        d->write_sectors = nvme_write;
+
+        // assing namespace to drive
+        d->device.driver_data = nsobj;
+
+        drive_mount(d);
+
+        log(LOG_INFO, "Mounted NVMe drive id=%d nsid=%u sectors=%llu sector_size=%u",
+            d->id, nsid, (unsigned long long)d->sectors, (unsigned)d->sector_size);
+
+        uint8_t *tmp = vm_alloc(4096);
+        memset(tmp, 0xAA, 4096);
+
+        int rc = d->read_sectors(d, tmp, 0 /*LBA*/, 1 /*count*/);
+        log(LOG_INFO, "nvme_read test rc=%d bytes[0..15]=%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+            rc,
+            tmp[0], tmp[1], tmp[2], tmp[3], tmp[4], tmp[5], tmp[6], tmp[7],
+            tmp[8], tmp[9], tmp[10], tmp[11], tmp[12], tmp[13], tmp[14], tmp[15]);
+
+        vm_free(tmp);
+
 
         dma_free(&ns_dma);
     }
@@ -456,5 +557,5 @@ void nvme_init(volatile pci_header_type0_t *header)
     nvme_start(nvme);
     nvme_identify_controller(nvme);
     nvme_create_io_queue(nvme);
-    // nvme_identify_namespace(nvme);
+    nvme_identify_namespace(nvme);
 }
