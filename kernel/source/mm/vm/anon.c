@@ -1,27 +1,52 @@
-#include "mm/vm.h"
+#include "mm/vm/vm_object.h"
 
 #include "hhdm.h"
+#include "mm/mm.h"
 #include "mm/pm.h"
 
-static page_t *anon_fault(vm_object_t *obj, size_t offset, uintptr_t addr, unsigned type)
+static bool get_page(vm_object_t *obj, size_t offset, page_t **page_out)
 {
     page_t *page = pm_alloc(0);
     if (!page)
-        return NULL;
+        return false;
 
     memset((void *)(page->addr + HHDM), 0, ARCH_PAGE_GRAN);
-
     xa_insert(&obj->cached_pages, offset, page);
+    *page_out = page;
 
-    return page;
+    return true;
 }
 
-static void anon_destroy(vm_object_t *obj)
+static bool put_page(vm_object_t *obj, page_t *page)
 {
+    return true;
+}
 
+static bool copy_page(vm_object_t *obj, size_t offset, page_t *src, page_t **dst_out)
+{
+    page_t *dst = pm_alloc(0);
+    if (!dst)
+        return false;
+
+    memcpy((void *)(dst->addr + HHDM), (void *)(src->addr + HHDM), ARCH_PAGE_GRAN);
+    xa_insert(&obj->cached_pages, offset, dst);
+    *dst_out = dst;
+
+    return true;
+}
+
+static void destroy(vm_object_t *obj)
+{
+    void *ptr;
+    size_t index = 0;
+
+    xa_foreach(&obj->cached_pages, index, ptr)
+        pm_free((page_t *)ptr);
 }
 
 vm_object_ops_t anon_ops = {
-    .fault = anon_fault,
-    .destroy  = anon_destroy
+    .get_page = get_page,
+    .put_page = put_page,
+    .copy_page = copy_page,
+    .destroy = destroy,
 };

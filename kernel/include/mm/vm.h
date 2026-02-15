@@ -3,18 +3,11 @@
 #include "arch/paging.h"
 #include "sync/spinlock.h"
 #include "utils/list.h"
-#include "utils/ref.h"
-#include "utils/xarray.h"
 #include <stddef.h>
 #include <stdint.h>
 
 // Forward declarrations
 
-typedef struct page page_t;
-typedef struct vnode vnode_t;
-
-typedef enum vm_object_type vm_object_type_t;
-typedef struct vm_object_ops vm_object_ops_t;
 typedef struct vm_object vm_object_t;
 typedef struct vm_segment vm_segment_t;
 typedef struct vm_addrspace vm_addrspace_t;
@@ -29,56 +22,6 @@ typedef struct vm_addrspace vm_addrspace_t;
 #define VM_MAP_FIXED           0x08
 #define VM_MAP_FIXED_NOREPLACE 0x10
 #define VM_MAP_POPULATE        0x20
-
-enum vm_object_type
-{
-    VM_OBJ_ANON,
-    VM_OBJ_VNODE,
-    VM_OBJ_PHYS,
-    VM_OBJ_SHADOW
-};
-
-struct vm_object_ops
-{
-    page_t *(*fault)(vm_object_t *obj, size_t offset, uintptr_t addr, unsigned type);
-    void (*destroy)(vm_object_t *obj);
-    vm_object_t* (*copy)(vm_object_t *obj);
-};
-
-struct vm_object
-{
-    vm_object_type_t type;
-    size_t size;
-    xarray_t cached_pages;
-    vm_object_ops_t *ops;
-
-    union
-    {
-        struct
-        {
-            vnode_t *vnode;
-            uintptr_t offset;
-        }
-        vnode;
-
-        struct
-        {
-            uintptr_t paddr;
-        }
-        phys;
-
-        struct
-        {
-            struct vm_object *parent;
-        }
-        shadow;
-    }
-    source;
-
-    list_node_t list_node;
-    spinlock_t slock;
-    ref_t refcount;
-};
 
 struct vm_segment
 {

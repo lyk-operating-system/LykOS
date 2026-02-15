@@ -22,36 +22,6 @@
 
 vm_addrspace_t *vm_kernel_as;
 
-extern vm_object_ops_t anon_ops;
-extern vm_object_ops_t vnode_ops;
-extern vm_object_ops_t phys_ops;
-
-static vm_object_ops_t *ops_table[] = {
-    [VM_OBJ_ANON]  = &anon_ops,
-    [VM_OBJ_PHYS]  = &phys_ops,
-};
-
-/*
- * Object utils
- */
-
-vm_object_t *vm_object_create(vm_object_type_t type, size_t size)
-{
-    vm_object_t *obj = heap_alloc(sizeof(vm_object_t));
-    if (!obj)
-        return NULL;
-
-    obj->type = type;
-    obj->size = size;
-    obj->cached_pages = XARRAY_INIT;
-    obj->ops = ops_table[type];
-    memset(&obj->source, 0, sizeof(obj->source));
-    obj->slock = SPINLOCK_INIT;
-    ref_init(&obj->refcount);
-
-    return obj;
-}
-
 /*
  * Segment utils
  */
@@ -142,20 +112,8 @@ static bool page_fault(vm_addrspace_t *as, uintptr_t virt)
     if (!seg)
         return false;
 
-    // if (seg->vn)
-    // {
-
-    // }
-    // else
-    // {
-    //     page_t *page = pm_alloc(0);
-    //     if (!page)
-    //         return false;
-
-    //     uintptr_t phys = page->addr;
-    //     memset((void *)(phys + HHDM), 0, ARCH_PAGE_GRAN);
-    //     arch_paging_map_page(as->page_map, FLOOR(virt, ARCH_PAGE_GRAN), phys, ARCH_PAGE_GRAN, seg->prot);
-    // }
+    //seg->object->ops->fault(seg->object->ops, , virt, 0);
+    //arch_paging_map_page(as->page_map, FLOOR(virt, ARCH_PAGE_GRAN), phys, ARCH_PAGE_GRAN, seg->prot);
 
     return true;
 }
@@ -417,40 +375,48 @@ void vm_addrspace_destroy(vm_addrspace_t *as)
 
 vm_addrspace_t *vm_addrspace_clone(vm_addrspace_t *parent_as)
 {
-    vm_addrspace_t *child_as = vm_addrspace_create();
-    child_as->limit_low = parent_as->limit_low;
-    child_as->limit_high = parent_as->limit_high;
-
     spinlock_acquire(&parent_as->slock);
 
-    // FOREACH(node, parent_as->segments)
-    // {
-    //     vm_segment_t *parent_seg = LIST_GET_CONTAINER(node, vm_segment_t, list_node);
+    vm_addrspace_t *new_as = vm_addrspace_create();
+    if (!new_as)
+    {
+        spinlock_release(&parent_as->slock);
+        return NULL;
+    }
 
-    //     uintptr_t child_addr;
-    //     vm_map(
-    //         child_as,
-    //         parent_seg->start, parent_seg->length,
-    //         parent_seg->prot, parent_seg->flags,
-    //         parent_seg->vn, parent_seg->offset,
-    //         &child_addr
-    //     );
+    new_as->limit_low = parent_as->limit_low;
+    new_as->limit_high = parent_as->limit_high;
 
-    //     size_t copy_size = parent_seg->length;
-    //     void *temp = heap_alloc(copy_size);
-    //     if (!temp) return NULL;
+    FOREACH(node, parent_as->segments)
+    {
+        vm_segment_t *parent_seg = LIST_GET_CONTAINER(node, vm_segment_t, list_node);
 
-    //     size_t copied = vm_copy_from_user(parent_as, temp, parent_seg->start, copy_size);
+        // Create shadow object
+        vm_object_t *obj = vm_object_create(VM_OBJ_SHADOW, parent_seg->object->size);
+        if (!obj)
+            goto fail;
+        obj->source.shadow.parent = parent_seg->object;
 
-    //     if (copied == copy_size)
-    //         vm_copy_to_user(child_as, parent_seg->start, temp, copy_size);
+        // Copy segments
+        vm_segment_t *seg = heap_alloc(sizeof(vm_segment_t));
+        if (!seg)
+        {
+            heap_free(obj);
+            goto fail;
+        }
+        *seg = *parent_seg;
+        // Assign shadow object backing
+        seg->object = obj;
 
-    //     heap_free(temp);
-    // }
+        list_append(&new_as->segments, &seg->list_node);
+    }
 
     spinlock_release(&parent_as->slock);
+    return new_as;
 
-    return child_as;
+fail:
+    spinlock_release(&parent_as->slock);
+    vm_addrspace_destroy(new_as);
     return NULL;
 }
 

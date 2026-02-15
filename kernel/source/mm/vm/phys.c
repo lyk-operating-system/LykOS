@@ -1,16 +1,40 @@
-#include "mm/vm.h"
+#include "mm/vm/vm_object.h"
+#include "mm/pm.h"
 
-static page_t *phys_fault(vm_object_t *obj, size_t offset, uintptr_t fault_addr, uint32_t flags)
+static bool get_page(vm_object_t *obj, size_t offset, page_t **page_out)
 {
-    return NULL;
+    uintptr_t paddr = obj->source.phys.paddr + offset;
+    page_t *page = pm_phys_to_page(paddr);
+    if (!page)
+        return false;
+
+    *page_out = page;
+    return true;
 }
 
-static void phys_destroy(vm_object_t *obj)
+static bool put_page(vm_object_t *obj [[maybe_unused]],
+                     page_t *page [[maybe_unused]])
 {
+    return true;
+}
 
+static bool copy_page(vm_object_t *obj [[maybe_unused]],
+                      size_t offset [[maybe_unused]],
+                      page_t *src [[maybe_unused]],
+                      page_t **dst_out [[maybe_unused]])
+{
+    // Not meant to use for this
+    return false;
+}
+
+static void destroy(vm_object_t *obj [[maybe_unused]])
+{
+    // Does nothing lol
 }
 
 vm_object_ops_t phys_ops = {
-    .fault = phys_fault,
-    .destroy  = phys_destroy
+    .get_page = get_page,
+    .put_page = put_page,
+    .copy_page = copy_page,
+    .destroy = destroy,
 };
