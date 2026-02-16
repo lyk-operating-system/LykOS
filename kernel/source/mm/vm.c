@@ -9,6 +9,7 @@
 #include "mm/heap.h"
 #include "mm/mm.h"
 #include "mm/pm.h"
+#include "mm/vm/vm_object.h"
 #include "panic.h"
 #include "sync/spinlock.h"
 #include "uapi/errno.h"
@@ -106,14 +107,21 @@ static vm_segment_t *find_seg(vm_addrspace_t *as, uintptr_t addr)
 
 // Page fault handler
 
-static bool page_fault(vm_addrspace_t *as, uintptr_t virt)
+bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_pf_type pf_type)
 {
     vm_segment_t *seg = check_collision(as, virt, 1);
     if (!seg)
         return false;
 
-    //seg->object->ops->fault(seg->object->ops, , virt, 0);
-    //arch_paging_map_page(as->page_map, FLOOR(virt, ARCH_PAGE_GRAN), phys, ARCH_PAGE_GRAN, seg->prot);
+    size_t offset = (virt - seg->start) + seg->offset;
+    offset = FLOOR(offset, ARCH_PAGE_GRAN);
+
+    page_t *page = NULL;
+    if (!vm_object_get_page(seg->object, offset, &page))
+        return false;
+
+    uintptr_t vaddr_aligned = FLOOR(virt, ARCH_PAGE_GRAN);
+    arch_paging_map_page(as->page_map, vaddr_aligned, page->addr, ARCH_PAGE_GRAN, seg->prot, VM_CACHE_STANDARD);
 
     return true;
 }
@@ -196,11 +204,16 @@ int vm_map(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
             uintptr_t curr_addr = vaddr + i;
             size_t curr_off = offset + i;
 
-            page_t *page = obj->ops->fault(obj, curr_off, curr_addr, VM_FAULT_WRITE);
-            if (!page)
+            page_t *page;
+            if (!obj->ops->get_page(obj, curr_off, &page))
                 panic("Fault handler failed!");
 
-            arch_paging_map_page(as->page_map, curr_addr, page->addr, ARCH_PAGE_GRAN, prot, VM_CACHE_STANDARD);
+            arch_paging_map_page(
+                as->page_map,
+                curr_addr, page->addr,
+                ARCH_PAGE_GRAN,
+                prot, VM_CACHE_STANDARD
+            );
         }
     }
 
@@ -254,7 +267,7 @@ void *vm_alloc(size_t size)
     vm_map(
         vm_kernel_as,
         0, size,
-        (vm_protection_t) {.write = 1}, VM_MAP_ANON | VM_MAP_POPULATE,
+        (vm_protection_t) {.write = true, .read = true}, VM_MAP_ANON | VM_MAP_POPULATE,
         NULL, 0,
         &out
     );
@@ -377,38 +390,60 @@ vm_addrspace_t *vm_addrspace_clone(vm_addrspace_t *parent_as)
 {
     spinlock_acquire(&parent_as->slock);
 
+    // Create new address space
     vm_addrspace_t *new_as = vm_addrspace_create();
     if (!new_as)
     {
         spinlock_release(&parent_as->slock);
         return NULL;
     }
-
     new_as->limit_low = parent_as->limit_low;
     new_as->limit_high = parent_as->limit_high;
 
     FOREACH(node, parent_as->segments)
     {
         vm_segment_t *parent_seg = LIST_GET_CONTAINER(node, vm_segment_t, list_node);
+        vm_object_t *shared_backing = parent_seg->object;
 
-        // Create shadow object
-        vm_object_t *obj = vm_object_create(VM_OBJ_SHADOW, parent_seg->object->size);
-        if (!obj)
+        // Create shadows for child and parent
+        vm_object_t *child_shadow = vm_object_create(VM_OBJ_SHADOW, shared_backing->size);
+        if (!child_shadow)
             goto fail;
-        obj->source.shadow.parent = parent_seg->object;
-
-        // Copy segments
-        vm_segment_t *seg = heap_alloc(sizeof(vm_segment_t));
-        if (!seg)
+        vm_object_t *parent_shadow = vm_object_create(VM_OBJ_SHADOW, shared_backing->size);
+        if (!parent_shadow)
         {
-            heap_free(obj);
+            vm_object_unref(child_shadow);
             goto fail;
         }
-        *seg = *parent_seg;
-        // Assign shadow object backing
-        seg->object = obj;
+        child_shadow->source.shadow.parent = shared_backing; // Make them point to original object
+        parent_shadow->source.shadow.parent = shared_backing;
+        vm_object_ref(shared_backing); // Update ref count
+        vm_object_ref(shared_backing);
 
-        list_append(&new_as->segments, &seg->list_node);
+        parent_seg->object = parent_shadow;
+
+        // Create segment
+        vm_segment_t *child_seg = heap_alloc(sizeof(vm_segment_t));
+        if (!child_seg)
+        {
+            // TODO: cleanup
+            goto fail;
+        }
+        memcpy(child_seg, parent_seg, sizeof(vm_segment_t));
+        child_seg->object = child_shadow;
+
+        list_append(&new_as->segments, &child_seg->list_node);
+
+
+        for (size_t i = 0; i < parent_seg->length; i += ARCH_PAGE_GRAN)
+        {
+            uintptr_t curr_addr = parent_seg->start + i;
+            arch_paging_prot_page(
+                parent_as->page_map,
+                curr_addr, ARCH_PAGE_GRAN,
+                (vm_protection_t) {.write = false, .read = true, .exec = true}
+            );
+        }
     }
 
     spinlock_release(&parent_as->slock);

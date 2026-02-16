@@ -40,7 +40,7 @@ proc_t *init_load(vnode_t *file)
     ||  ehdr.e_type              != ET_EXEC)
         log(LOG_ERROR, "Incompatible ELF file `%s`!", file->name);
 
-    proc_t *proc = proc_create(file->name, true);
+    proc_t *proc = proc_create(file->name, "/", true);
 
     CLEANUP Elf64_Phdr *ph_table = heap_alloc(ehdr.e_phentsize * ehdr.e_phnum);
     if (vfs_read(file, ph_table, ehdr.e_phoff, ehdr.e_phentsize * ehdr.e_phnum, &count) != EOK

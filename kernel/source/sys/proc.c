@@ -20,8 +20,6 @@ sys_ret_t syscall_exit(int code)
 
 sys_ret_t syscall_fork()
 {
-    log(LOG_DEBUG, "Process forked.");
-
     proc_fork(sys_curr_proc());
 
     return (sys_ret_t) {0, EOK};

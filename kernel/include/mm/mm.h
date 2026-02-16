@@ -37,6 +37,14 @@ typedef enum
 }
 vm_cache_t;
 
+typedef enum
+{
+    VM_PF_READ,
+    VM_PF_WRITE,
+    VM_PF_EXEC
+}
+vm_pf_type;
+
 void *memcpy(void *restrict dest, const void *restrict src, size_t n);
 
 void *memmove(void *dest, const void *src, size_t n);

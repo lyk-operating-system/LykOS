@@ -5,9 +5,11 @@
 #include "arch/x86_64/abi/stack.h"
 #include "arch/x86_64/fpu.h"
 #include "arch/x86_64/msr.h"
+#include "arch/x86_64/tables/tss.h"
 #include "hhdm.h"
 #include "mm/mm.h"
 #include "mm/pm.h"
+#include "proc/sched.h"
 #include "utils/math.h"
 
 typedef struct
@@ -129,8 +131,9 @@ void arch_thread_context_switch(arch_thread_context_t *curr, arch_thread_context
     // FPU
     x86_64_fpu_save(curr->fpu_area);
     x86_64_fpu_restore(next->fpu_area);
-
+    // Thread reg and TSS
     arch_lcpu_thread_reg_write((size_t)next);
+    x86_64_tss_set_rsp0(&x86_64_tss[sched_get_curr_cpuid()], next->kernel_stack);
 
     __thread_context_switch(curr, next); // This function calls `sched_drop` for `curr` too.
 }

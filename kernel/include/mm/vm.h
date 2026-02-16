@@ -51,6 +51,10 @@ struct vm_addrspace
 
 extern vm_addrspace_t *vm_kernel_as;
 
+// Page fault handler
+
+bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_pf_type pf_type);
+
 // Mapping and unmapping
 
 int vm_map(vm_addrspace_t *as, uintptr_t vaddr, size_t length,

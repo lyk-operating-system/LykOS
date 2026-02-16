@@ -174,6 +174,56 @@ int arch_paging_unmap_page(arch_paging_map_t *map, uintptr_t vaddr)
     return 0;
 }
 
+// Flags
+
+int arch_paging_prot_page(arch_paging_map_t *map, uintptr_t vaddr, size_t size, vm_protection_t prot)
+{
+    ASSERT(size == ARCH_PAGE_SIZE_4K
+        || size == ARCH_PAGE_SIZE_2M
+        || size == ARCH_PAGE_SIZE_1G);
+    ASSERT(vaddr % size == 0);
+
+    bool is_user = vaddr < HHDM;
+
+    size_t indices[] = {
+        (vaddr >> 12) & 0x1FF,
+        (vaddr >> 21) & 0x1FF,
+        (vaddr >> 30) & 0x1FF,
+        (vaddr >> 39) & 0x1FF
+    };
+
+    pte_t *table = map->pml4;
+    size_t target_level = (size == 1 * GIB) ? 2
+                        : (size == 2 * MIB) ? 1
+                        : 0;
+    for (size_t level = 3; level > target_level; level--)
+    {
+        size_t idx = indices[level];
+        ASSERT(table[idx] & PTE_PRESENT);
+        ASSERT(!(table[idx] & PTE_HUGE));
+
+        pte_t *next = get_next_level(table, idx, false, is_user);
+        ASSERT(next);
+        table = next;
+    }
+
+    // Leaf
+
+    uint64_t leaf_idx = indices[target_level];
+    ASSERT(table[leaf_idx] & PTE_PRESENT);
+
+    pte_t entry = table[leaf_idx];
+    entry &= ~(PTE_WRITE | PTE_NX | PTE_USER);
+    if (!prot.read) log(LOG_ERROR, "No-read mapping is not supported on x86_64!");
+    if (prot.write) entry |= PTE_WRITE;
+    if (!prot.exec) entry |= PTE_NX;
+    if (is_user)    entry |= PTE_USER;
+
+    table[leaf_idx] = entry;
+
+    return 0;
+}
+
 // Utils
 
 bool arch_paging_vaddr_to_paddr(const arch_paging_map_t *map, uintptr_t vaddr, uintptr_t *out_paddr)

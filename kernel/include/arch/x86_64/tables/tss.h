@@ -33,6 +33,8 @@ typedef struct
     uint16_t iomap_base;
 }
 __attribute__((packed))
-tss_t;
+x86_64_tss_t;
 
-void tss_set_rsp0(tss_t *tss, uintptr_t stack_pointer);
+extern x86_64_tss_t x86_64_tss[32];
+
+void x86_64_tss_set_rsp0(x86_64_tss_t *tss, uintptr_t stack_pointer);

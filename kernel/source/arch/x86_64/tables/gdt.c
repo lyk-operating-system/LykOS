@@ -2,6 +2,7 @@
 
 #include "log.h"
 #include "mm/mm.h"
+#include "proc/sched.h"
 
 #include <stdint.h>
 
@@ -93,21 +94,11 @@ static gdt_entry_t g_gdt[] = {
     {}
 };
 
-void x86_64_gdt_init_cpu()
+//
+
+static void load_tss(x86_64_tss_t *tss)
 {
-    gdtr_t gdtr = (gdtr_t){
-        .limit = sizeof(g_gdt) - 1,
-        .base = (uint64_t)&g_gdt
-    };
-
-    __gdt_load(&gdtr, GDT_SELECTOR_CODE64_RING0, GDT_SELECTOR_DATA64_RING0);
-
-    log(LOG_INFO, "GDT loaded");
-}
-
-void x86_64_gdt_load_tss(tss_t *tss)
-{
-    memset(tss, 0, sizeof(tss_t));
+    memset(tss, 0, sizeof(x86_64_tss_t));
 
     uint16_t tss_segment = sizeof(g_gdt) - 16;
 
@@ -115,8 +106,8 @@ void x86_64_gdt_load_tss(tss_t *tss)
     *sys_entry = (gdt_system_entry_t) {
         .gdt_entry = (gdt_entry_t) {
             .access    = ACCESS_PRESENT | ACCESS_TYPE_TSS,
-            .flags     = FLAG_SYSTEM_AVL | ((sizeof(tss_t) >> 16) & 0b1111),
-            .limit     = (uint16_t)sizeof(tss_t),
+            .flags     = FLAG_SYSTEM_AVL | ((sizeof(x86_64_tss_t) >> 16) & 0b1111),
+            .limit     = (uint16_t)sizeof(x86_64_tss_t),
             .base_low  = (uint16_t)(uint64_t)tss,
             .base_mid  = (uint8_t)((uint64_t)tss >> 16),
             .base_high = (uint8_t)((uint64_t)tss >> 24),
@@ -125,4 +116,19 @@ void x86_64_gdt_load_tss(tss_t *tss)
     };
 
     asm volatile("ltr %0" : : "m"(tss_segment));
+}
+
+
+void x86_64_gdt_init_cpu()
+{
+    gdtr_t gdtr = (gdtr_t){
+        .limit = sizeof(g_gdt) - 1,
+        .base = (uint64_t)&g_gdt
+    };
+
+    __gdt_load(&gdtr, GDT_SELECTOR_CODE64_RING0, GDT_SELECTOR_DATA64_RING0);\
+    log(LOG_DEBUG, "GDT loaded");
+
+    load_tss(&x86_64_tss[sched_get_curr_cpuid()]);
+    log(LOG_DEBUG, "TSS loaded");
 }

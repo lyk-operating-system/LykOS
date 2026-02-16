@@ -33,7 +33,7 @@ typedef struct fd_table
 }
 fd_table_t;
 
-void fd_table_init(fd_table_t *table);
+fd_table_t *fd_table_create();
 void fd_table_destroy(fd_table_t *table);
 
 fd_table_t *fd_table_clone(fd_table_t *table);

@@ -34,7 +34,7 @@ proc_t;
 
 // Create, destroy, and duplicate
 
-proc_t *proc_create(const char *name, bool is_kernel);
+proc_t *proc_create(const char *name, const char *cwd, bool is_kernel);
 
 void proc_destroy(proc_t *proc);
 

@@ -45,6 +45,16 @@ void sched_drop(thread_t *t)
 
 // Public API
 
+thread_t *sched_get_curr_thread()
+{
+    return (thread_t *)arch_lcpu_thread_reg_read();
+}
+
+uint32_t sched_get_curr_cpuid()
+{
+    return sched_get_curr_thread()->assigned_cpu->id;
+}
+
 void sched_enqueue(thread_t *t)
 {
     spinlock_acquire(&slock);
@@ -53,11 +63,6 @@ void sched_enqueue(thread_t *t)
     t->status = THREAD_STATE_READY;
     list_append(&ready_queues[0], &t->sched_thread_list_node);
     spinlock_release(&slock);
-}
-
-thread_t *sched_get_curr_thread()
-{
-    return (thread_t *)arch_lcpu_thread_reg_read();
 }
 
 void sched_preemt()
@@ -69,6 +74,8 @@ void sched_preemt()
     if (old->priority < MLFQ_LEVELS - 1)
         old->priority++;
     thread_t *new = pick_next_thread();
+    new->assigned_cpu = old->assigned_cpu;
+    old->assigned_cpu = NULL;
     spinlock_release(&slock);
 
     vm_addrspace_load(new->owner->as);
@@ -82,6 +89,8 @@ void sched_yield(thread_status_t status)
     old->last_ran = arch_timer_get_uptime_ns();
     old->status = status;
     thread_t *new = pick_next_thread();
+    new->assigned_cpu = old->assigned_cpu;
+    old->assigned_cpu = NULL;
     spinlock_release(&slock);
 
     vm_addrspace_load(new->owner->as);

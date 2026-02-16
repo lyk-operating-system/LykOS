@@ -48,7 +48,7 @@ void x86_64_idt_init()
         };
     }
 
-    log(LOG_INFO, "IDT generated.");
+    log(LOG_DEBUG, "IDT generated.");
 }
 
 void x86_64_idt_init_cpu()
@@ -61,5 +61,5 @@ void x86_64_idt_init_cpu()
 
     arch_lcpu_int_unmask();
 
-    log(LOG_INFO, "IDT loaded");
+    log(LOG_DEBUG, "IDT loaded");
 }

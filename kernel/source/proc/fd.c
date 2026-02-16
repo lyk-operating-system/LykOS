@@ -2,6 +2,7 @@
 
 #include "fs/vfs.h"
 #include "mm/heap.h"
+#include "mm/vm.h"
 #include "panic.h"
 #include "sync/spinlock.h"
 #include <stdatomic.h>
@@ -31,32 +32,36 @@ static inline void fd_unref(fd_entry_t *entry)
 
 //
 
-void fd_table_init(fd_table_t *table)
+fd_table_t *fd_table_create()
 {
+    fd_table_t *table = heap_alloc(sizeof(fd_table_t));
+    if (!table)
+        return NULL;
+
+    // TODO: use vm_alloc
     table->fds = heap_alloc(sizeof(fd_entry_t) * MAX_FD_COUNT);
+    if (!table->fds)
+    {
+        heap_free(table);
+        return NULL;
+    }
+    memset(table->fds, 0, sizeof(fd_entry_t) * MAX_FD_COUNT);
     table->capacity = MAX_FD_COUNT;
     table->lock = SPINLOCK_INIT;
 
-    for (size_t i = 0; i < table->capacity; i++)
-    {
-        table->fds[i].vnode = NULL;
-        table->fds[i].offset = 0;
-    }
+    return table;
 }
 
 void fd_table_destroy(fd_table_t *table)
 {
-    spinlock_acquire(&table->lock);
-
     for (size_t i = 0; i < table->capacity; i++)
     {
         fd_entry_t *entry = &table->fds[i];
         if (entry->vnode != NULL)
             vnode_unref(entry->vnode);
     }
-    heap_free(table->fds);
 
-    spinlock_release(&table->lock);
+    vm_free(table->fds);
 }
 
 bool fd_alloc(fd_table_t *table, vnode_t *vnode, fd_acc_mode_t acc_mode, int *out_fd)
@@ -135,26 +140,28 @@ bool fd_alloc(fd_table_t *table, vnode_t *vnode, fd_acc_mode_t acc_mode, int *ou
 
 fd_table_t *fd_table_clone(fd_table_t *parent)
 {
-    fd_table_t *child = heap_alloc(sizeof(fd_table_t));
-    if (!child) return NULL;
+    fd_table_t *child = fd_table_create();
+    if (!child)
+        return NULL;
 
-    fd_table_init(child);
     spinlock_acquire(&parent->lock);
 
-    if (child->capacity < parent->capacity)
-    {
-        child->fds = heap_realloc(child->fds,
-            child->capacity * sizeof(fd_entry_t),
-            parent->capacity * sizeof(fd_entry_t));
+    child->capacity = parent->capacity;
 
-        if (!child->fds)
-        {
-            spinlock_release(&parent->lock);
-            heap_free(child);
-            return NULL;
-        }
-        child->capacity = parent->capacity;
-    }
+    // if (child->capacity < parent->capacity)
+    // {
+    //     child->fds = heap_realloc(child->fds,
+    //         child->capacity * sizeof(fd_entry_t),
+    //         parent->capacity * sizeof(fd_entry_t));
+
+    //     if (!child->fds)
+    //     {
+    //         spinlock_release(&parent->lock);
+    //         heap_free(child);
+    //         return NULL;
+    //     }
+    //     child->capacity = parent->capacity;
+    // }
 
     for (size_t i = 0; i < parent->capacity; i++)
     {

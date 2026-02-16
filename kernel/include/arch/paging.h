@@ -14,6 +14,10 @@ int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t padd
 
 int arch_paging_unmap_page(arch_paging_map_t *map, uintptr_t vaddr);
 
+// Flags
+
+int arch_paging_prot_page(arch_paging_map_t *map, uintptr_t vaddr, size_t size, vm_protection_t prot);
+
 // Utils
 
 bool arch_paging_vaddr_to_paddr(const arch_paging_map_t *map, uintptr_t vaddr, uintptr_t *out_paddr);

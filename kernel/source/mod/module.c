@@ -86,7 +86,7 @@ int module_load(vnode_t *file, module_t **out)
                 vm_kernel_as,
                 0, size,
                 VM_PROTECTION_FULL,
-                VM_MAP_ANON,
+                VM_MAP_ANON | VM_MAP_POPULATE,
                 NULL, 0,
                 &mem
             );
@@ -106,7 +106,7 @@ int module_load(vnode_t *file, module_t **out)
                 vm_kernel_as,
                 0, size,
                 VM_PROTECTION_FULL,
-                VM_MAP_ANON,
+                VM_MAP_ANON | VM_MAP_POPULATE,
                 NULL, 0,
                 &mem
             );

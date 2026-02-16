@@ -1,6 +1,7 @@
 #include "proc/proc.h"
 
 #include "assert.h"
+#include "log.h"
 #include "mm/heap.h"
 #include "mm/vm.h"
 #include "proc/fd.h"
@@ -21,9 +22,10 @@ static inline uint32_t new_pid()
     return ret;
 }
 
-proc_t *proc_create(const char *name, bool user)
+proc_t *proc_create(const char *name, const char *cwd, bool user)
 {
     ASSERT(name);
+    ASSERT(cwd);
 
     proc_t *proc = heap_alloc(sizeof(proc_t));
     if (!proc)
@@ -32,18 +34,19 @@ proc_t *proc_create(const char *name, bool user)
     proc->ppid = 0; // To be set by caller.
     proc->name = strdup(name);
     if (!proc->name)
-        goto cleanup;
+        goto fail;
     proc->user = user;
     proc->status = PROC_STATE_NEW;
     proc->as = user ? vm_addrspace_create() : vm_kernel_as;
     if (user && !proc->as)
-        goto cleanup;
+        goto fail;
     proc->threads = LIST_INIT;
-    proc->fd_table = heap_alloc(sizeof(fd_table_t));
+    proc->fd_table = fd_table_create();
     if (!proc->fd_table)
-        goto cleanup;
-    fd_table_init(proc->fd_table);
-    proc->cwd = NULL;
+        goto fail;
+    proc->cwd = strdup(cwd);
+    if (!proc->cwd)
+        goto fail;
     proc->proc_list_node = LIST_NODE_INIT;
     proc->slock = SPINLOCK_INIT;
     proc->ref_count = 1;
@@ -54,10 +57,14 @@ proc_t *proc_create(const char *name, bool user)
 
     return proc;
 
-cleanup:
+fail:
+    log(LOG_ERROR, "Failed to create process!");
+
+    if (!proc) return NULL;
     if (proc->name) heap_free(proc->name);
-    if (proc->fd_table) heap_free(proc->fd_table);
     if (user && proc->as) vm_addrspace_destroy(proc->as);
+    if (proc->fd_table) heap_free(proc->fd_table);
+    if (proc->cwd) heap_free(proc->cwd);
     heap_free(proc);
 
     return NULL;
@@ -100,20 +107,20 @@ proc_t *proc_fork(proc_t *proc)
     new_proc->pid = new_pid();
     new_proc->name = strdup(proc->name);
     if (!new_proc->name)
-        goto cleanup;
+        goto fail;
     new_proc->ppid = proc->pid;
     new_proc->user= proc->user;
     new_proc->status = PROC_STATE_NEW;
     new_proc->as = vm_addrspace_clone(proc->as);
     if (!new_proc->as)
-        goto cleanup;
+        goto fail;
     new_proc->threads = LIST_INIT;
     new_proc->fd_table = fd_table_clone(proc->fd_table);
     if (!new_proc->fd_table)
-        goto cleanup;
+        goto fail;
     new_proc->cwd = strdup(proc->cwd);
     if (!new_proc->cwd)
-        goto cleanup;
+        goto fail;
     new_proc->proc_list_node = LIST_NODE_INIT;
     new_proc->slock = SPINLOCK_INIT;
     new_proc->ref_count = 1;
@@ -124,14 +131,17 @@ proc_t *proc_fork(proc_t *proc)
         thread_t *thread = LIST_GET_CONTAINER(n, thread_t, proc_thread_list_node);
         thread_t *new_thread = thread_duplicate(thread);
         if (!new_thread)
-            goto cleanup;
+            goto fail;
         new_thread->owner = new_proc;
         list_append(&new_proc->threads, &new_thread->proc_thread_list_node);
     }
 
     return new_proc;
 
-cleanup:
+fail:
+    log(LOG_ERROR, "Failed to fork process!");
+
+    if (!new_proc) return NULL;
     if (new_proc->name) heap_free(new_proc->name);
     if (new_proc->as) vm_addrspace_destroy(new_proc->as);
     if (new_proc->fd_table) fd_table_destroy(new_proc->fd_table);
