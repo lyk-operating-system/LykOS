@@ -417,7 +417,54 @@ int nvme_read(drive_t *d, const void *buf, uint64_t lba, uint64_t count)
 
 int nvme_write(drive_t *d, const void *buf, uint64_t lba, uint64_t count)
 {
-    (void)d; (void)buf; (void)lba; (void)count;
+    nvme_namespace_t *ns = (nvme_namespace_t*)d->device.driver_data;
+    nvme_t *nvme = ns->controller;
+    nvme_queue_t *ioq = nvme->io_queue;
+
+    const uint8_t *in = (uint8_t *)(uintptr_t)buf; // why
+    dma_buf_t dma = dma_alloc(4096); // single 4k dma page for prp1-only for now
+
+    uint64_t remaining = count;
+    uint64_t cur_lba = lba;
+
+    while (remaining)
+    {
+        uint64_t max_blocks = 4096ull / (uint64_t)ns->lba_size;
+        if (max_blocks == 0)
+        {
+            dma_free(&dma);
+            return -1;
+        }
+
+        uint64_t blocks = (remaining < max_blocks) ? remaining : max_blocks;
+        uint64_t bytes  = blocks * (uint64_t)ns->lba_size;
+
+        memset(dma.vaddr, 0, 4096);
+        memcpy(dma.vaddr, in, (size_t)bytes);
+
+        // create NVME write command
+        nvme_command_t cmd = (nvme_command_t){0};
+        cmd.nsid = ns->nsid;
+        cmd.dptr.prp1 = dma.paddr;
+        cmd.dptr.prp2 = 0;
+        cmd.cdw10     = (uint32_t)(cur_lba & 0xFFFFFFFFu);
+        cmd.cdw11     = (uint32_t)(cur_lba >> 32);
+        cmd.cdw12     = (uint32_t)(((blocks - 1) & 0xFFFFu)); // NLB
+
+        uint16_t cid = nvme_submit_command(nvme, 0x01, cmd, ioq);
+        if (cid == UINT16_MAX)
+        {
+            dma_free(&dma);
+            return -1;
+        }
+        nvme_wait_completion(nvme, cid, ioq);
+
+        in += bytes;
+        cur_lba += blocks;
+        remaining -= blocks;
+    }
+
+    dma_free(&dma);
     return 0;
 }
 
@@ -507,16 +554,46 @@ static void nvme_identify_namespace(nvme_t *nvme)
             nsid, (unsigned long long)ncap, lbads, lba_size);
 
         uint8_t *tmp = vm_alloc(4096);
+        memset(tmp, 0, 4096);
+
+        // --- WRITE test pattern to LBA 8 ---
+        const uint64_t test_lba = 8;
+        const uint64_t test_cnt = 1; // 1 sector (512B on your namespace)
+
+        const char *msg = "LYKOS NVME WRITE/READ TEST\n";
+        size_t msg_len = strlen(msg);
+        if (msg_len > d->sector_size) msg_len = d->sector_size;
+
+        memcpy(tmp, msg, msg_len);
+
+        // fill the rest of the sector with a simple pattern
+        for (uint64_t i = msg_len; i < d->sector_size; i++)
+            tmp[i] = (uint8_t)(i & 0xFF);
+
+        int wrc = d->write_sectors(d, tmp, test_lba, test_cnt);
+        log(LOG_INFO, "nvme_write test wrc=%d lba=%llu cnt=%llu",
+            wrc, (unsigned long long)test_lba, (unsigned long long)test_cnt);
+
+        // --- READ back from LBA 8 ---
         memset(tmp, 0xAA, 4096);
 
-        int rc = d->read_sectors(d, tmp, 0, 1);
-        log(LOG_INFO, "nvme_read test rc=%d bytes[0..15]=%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-            rc,
+        int rrc = d->read_sectors(d, tmp, test_lba, test_cnt);
+        log(LOG_INFO, "nvme_readback rrc=%d bytes[0..15]=%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+            rrc,
             tmp[0], tmp[1], tmp[2], tmp[3], tmp[4], tmp[5], tmp[6], tmp[7],
             tmp[8], tmp[9], tmp[10], tmp[11], tmp[12], tmp[13], tmp[14], tmp[15]);
 
-        vm_free(tmp);
+        // optional: print ASCII prefix (up to 32 chars)
+        char asc[33];
+        for (int i = 0; i < 32; i++)
+        {
+            uint8_t c = tmp[i];
+            asc[i] = (c >= 32 && c <= 126) ? (char)c : '.';
+        }
+        asc[32] = 0;
+        log(LOG_INFO, "nvme_readback ascii32='%s'", asc);
 
+        vm_free(tmp);
 
         dma_free(&ns_dma);
     }
