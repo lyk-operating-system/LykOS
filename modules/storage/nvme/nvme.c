@@ -469,22 +469,26 @@ static void nvme_identify_namespace(nvme_t *nvme)
 
         // add namespace as storage drive
         // create namespace object
-        uint8_t  idx   = ns->flbas & 0x0F;
-        uint8_t  lbads = *(uint8_t  *)(ns + 0x80 + idx * 16 + 2);
+        uint8_t *buf = (uint8_t *)ns_dma.vaddr;
+
+        uint64_t ncap  = *(uint64_t *)(buf + 0x08);
+        uint8_t  flbas = *(uint8_t  *)(buf + 0x1A);
+        uint8_t  idx   = flbas & 0x0F;
+        uint8_t  lbads = *(uint8_t  *)(buf + 0x80 + idx * 16 + 2);
         uint32_t lba_size = 1u << lbads;
 
         nvme_namespace_t *nsobj = heap_alloc(sizeof(nvme_namespace_t)); // TO-DO: free this at some point
         memset(nsobj, 0, sizeof(*nsobj));
         nsobj->controller = nvme;
         nsobj->nsid = nsid;
-        nsobj->lba_count = ns->ncap;
+        nsobj->lba_count = ncap;
         nsobj->lba_size = lba_size;
 
         // create drive object
         drive_t *d = drive_create(DRIVE_TYPE_NVME);
 
-        d->sector_size = nsobj->lba_size;
-        d->sectors = nsobj->lba_count;
+        d->sector_size = lba_size;
+        d->sectors = ncap;
 
         d->serial = nvme->identity->sn;
         d->model = nvme->identity->mn;
@@ -499,13 +503,13 @@ static void nvme_identify_namespace(nvme_t *nvme)
 
         drive_mount(d);
 
-        log(LOG_INFO, "Mounted NVMe drive id=%d nsid=%u sectors=%llu sector_size=%u",
-            d->id, nsid, (unsigned long long)d->sectors, (unsigned)d->sector_size);
+        log(LOG_INFO, "Mount nsid=%u ncap=%llu lbads=%u lba_size=%u",
+            nsid, (unsigned long long)ncap, lbads, lba_size);
 
         uint8_t *tmp = vm_alloc(4096);
         memset(tmp, 0xAA, 4096);
 
-        int rc = d->read_sectors(d, tmp, 0 /*LBA*/, 1 /*count*/);
+        int rc = d->read_sectors(d, tmp, 0, 1);
         log(LOG_INFO, "nvme_read test rc=%d bytes[0..15]=%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
             rc,
             tmp[0], tmp[1], tmp[2], tmp[3], tmp[4], tmp[5], tmp[6], tmp[7],
