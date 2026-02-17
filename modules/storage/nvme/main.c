@@ -55,5 +55,5 @@ void __module_destroy()
 
 MODULE_NAME("NVMe")
 MODULE_VERSION("0.1.0")
-MODULE_DESCRIPTION("NVMe ops.")
+MODULE_DESCRIPTION("Basic NVMe read & write");
 MODULE_AUTHOR("Diana Petroșel")

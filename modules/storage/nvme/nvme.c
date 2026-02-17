@@ -3,7 +3,6 @@
 
 #include "arch/lcpu.h"
 #include "dev/bus/pci.h"
-#include "dev/storage/drive.h"
 #include "log.h"
 #include "mm/mmio.h"
 #include "mm/heap.h"
@@ -11,6 +10,7 @@
 #include "sync/spinlock.h"
 #include <stdint.h>
 
+// TO-DO: add shutdown func
 // --- LOGGING HELPERS ---
 
 static void nvme_copy_trim(char *dst, size_t dstsz, const char *src, size_t srclen)
@@ -476,13 +476,12 @@ static void nvme_identify_namespace(nvme_t *nvme)
             nvme_wait_completion(nvme, cid, nvme->admin_queue);
 
         /* LOGGING
-        *//*
-               log(LOG_INFO, "Namespace Identify: NSID=%u NSZE=%llu NCAP=%llu FLBAS=0x%02x",
-                   nsid,
-                   (unsigned long long)ns->nsze,
-                   (unsigned long long)ns->ncap,
-                   (unsigned)ns->flbas);
-                   */
+        log(LOG_INFO, "Namespace Identify: NSID=%u NSZE=%llu NCAP=%llu FLBAS=0x%02x",
+            nsid,
+            (unsigned long long)ns->nsze,
+            (unsigned long long)ns->ncap,
+            (unsigned)ns->flbas);
+            */
 
         // here we add namespace as a storage drive
 
@@ -496,7 +495,7 @@ static void nvme_identify_namespace(nvme_t *nvme)
 
         uint32_t lba_size = 1u << lbads;
 
-        nvme_namespace_t *nsobj = heap_alloc(sizeof(nvme_namespace_t)); // TO-DO: free this at some point
+        nvme_namespace_t *nsobj = heap_alloc(sizeof(nvme_namespace_t));
         memset(nsobj, 0, sizeof(*nsobj));
         nsobj->controller = nvme;
         nsobj->nsid = nsid;

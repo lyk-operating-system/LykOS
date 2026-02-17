@@ -94,7 +94,7 @@ package/modules {
             --cross-file=$SOURCES_DIR/support/cross-files/kernel-$OPTION_arch.ini \
             --prefix=$PREFIX \
             -Darch=$OPTION_arch \
-            -Denabled_modules=test_module,pci,ps2 \
+            -Denabled_modules=test_module,pci,nvme,ps2 \
             -Dkernel_include_dir=$SOURCES_DIR/kernel/include \
             $SOURCES_DIR/modules
     </sh>

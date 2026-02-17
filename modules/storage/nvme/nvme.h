@@ -3,6 +3,7 @@
 #include "assert.h"
 #include "dev/bus/pci.h"
 #include "dev/device.h"
+#include "dev/storage/drive.h"
 #include "hhdm.h"
 #include "mm/dma.h"
 #include "sync/spinlock.h"
@@ -328,7 +329,7 @@ __attribute__((packed))
 nvme_namespace_t;
 
 // --- FUNCTIONS ---
-void nvme_reset(nvme_t *nvme);
-void nvme_start(nvme_t *nvme);
+int nvme_read(drive_t *d, void *buf, uint64_t lba, uint64_t count);
+int nvme_write(drive_t *d, const void *buf, uint64_t lba, uint64_t count);
 
 void nvme_init(volatile pci_header_type0_t *header);
