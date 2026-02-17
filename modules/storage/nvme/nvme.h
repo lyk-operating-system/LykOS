@@ -3,178 +3,198 @@
 #include "assert.h"
 #include "dev/bus/pci.h"
 #include "dev/device.h"
-#include "mm/dma.h"
-#include "mm/vm.h"
 #include "hhdm.h"
+#include "mm/dma.h"
 #include "sync/spinlock.h"
-#include "dev/storage/drive.h"
-#include "utils/string.h"
 #include <stdint.h>
 
-// TO-DO: Change this to get max depth from controller
 #define NVME_ADMIN_QUEUE_DEPTH 64
-#define NVME_IO_QUEUE_DEPTH 64
+#define NVME_IO_QUEUE_DEPTH    64
 
 #define NVME_CQE_PHASE(e)   ((uint16_t)((e)->status & 1u))
 #define NVME_CQE_STATUS(e)  ((uint16_t)((e)->status >> 1))
 
-// Doorbell Macros
-#define NVME_SQ_TDBL(base, qid, stride) \
-    (*(volatile uint32_t *)((uintptr_t)(base) + 0x1000 + (2 * (qid)) * (stride)))
-
-#define NVME_CQ_HDBL(base, qid, stride) \
-    (*(volatile uint32_t *)((uintptr_t)(base) + 0x1000 + (2 * (qid) + 1) * (stride)))
-
 // --- ID STRUCTS ---
-// controller identification struct
-typedef struct
-{
-    uint16_t vid; // PCI vendor id
-    uint16_t ssvid; // subsystem vendor id
+// NVMe Identify Controller data struct
+/* source: https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-Revision-2.3-2025.08.01-Ratified.pdf
+   Figure 328 */
+// ------------
+ typedef struct
+ {
+     // controller capabilities and general info
+     uint16_t vid;              // pci vendor id
+     uint16_t ssvid;            // pci subsystem vendor id
+     char     sn[20];           // serial number (ascii)
+     char     mn[40];           // model number (ascii)
+     char     fr[8];            // firmware revision (ascii)
+     uint8_t  rab;              // recommended arbitration burst
+     uint8_t  ieee[3];          // ieee oui identifier
+     uint8_t  cmic;             // multi-path i/o and namespace sharing stuff
+     uint8_t  mdts;             // max data transfer size
+     uint16_t cntlid;           // controller id
+     uint32_t ver;              // version
+     uint32_t rtd3r;            // rtd3 resume latency
+     uint32_t rtd3e;            // rtd3 entry latency
+     uint32_t oaes;             // optional async events supported
+     uint32_t ctratt;           // controller attributes
+     uint16_t rrls;             // read recovery levels supported
+     uint8_t  _rsvd66[9];       // reserved
+     uint8_t  cntrltype;        // controller type
+     uint8_t  fguid[16];        // fru globally unique id
+     uint16_t crdt1;            // command retry delay time 1
+     uint16_t crdt2;            // command retry delay time 2
+     uint16_t crdt3;            // command retry delay time 3
+     uint8_t  _rsvd86[106];     // reserved
+     uint8_t  _rsvd_mi[16];     // reserved for nvme management interface
 
-    char     sn[20]; // serial number
-    char     mn[40]; // model number
-    char     fr[8]; // firmware version
+     // admin command set attributes
+     uint16_t oacs;             // optional admin command support
+     uint8_t  acl;              // abort command limit
+     uint8_t  aerl;             // async event request limit
+     uint8_t  frmw;             // firmware update support
+     uint8_t  lpa;              // log page attributes
+     uint8_t  elpe;             // error log page entries
+     uint8_t  npss;             // number of power states supported
+     uint8_t  avscc;            // admin vendor-specific command config
+     uint8_t  apsta;            // autonomous power state transitions
+     uint16_t wctemp;           // warning composite temp threshold
+     uint16_t cctemp;           // critical composite temp threshold
+     uint16_t mtfa;             // max time for firmware activation
+     uint32_t hmpre;            // host memory buffer preferred size
+     uint32_t hmmin;            // host memory buffer minimum size
+     uint8_t  tnvmcap[16];      // total nvm capacity (128-bit)
+     uint8_t  unvmcap[16];      // unallocated nvm capacity (128-bit)
+     uint32_t rpmbs;            // replay protected memory block support
+     uint16_t edstt;            // extended device self-test time
+     uint8_t  dsto;             // device self-test options
+     uint8_t  fwug;             // firmware update granularity
+     uint16_t kas;              // keep alive support
+     uint16_t hctma;            // host controlled thermal management
+     uint16_t mntmt;            // min thermal management temp
+     uint16_t mxtmt;            // max thermal management temp
+     uint32_t sanicap;          // sanitize capabilities
+     uint32_t hmminds;          // host memory buffer min descriptor size
+     uint16_t hmmaxd;           // host memory max descriptor entries
+     uint16_t nsetidmax;        // max nvm set identifier
+     uint16_t endgidmax;        // max endurance group identifier
+     uint8_t  anatt;            // ana transition time
+     uint8_t  anacap;           // ana capabilities
+     uint32_t anagrpmax;        // max ana group identifier
+     uint32_t nanagrpid;        // number of ana group identifiers
+     uint32_t pels;             // persistent event log size
+     uint8_t  _rsvd164[156];    // reserved
 
-    uint8_t  rab; // Recommended Arbitration Burst
-    uint8_t  ieee[3]; // IEEE OUI
-    uint8_t  cmic; // Controller Multi-Interface Capabilities
-    uint8_t  mdts; // Maximum Data Transfer Size
+     // nvm command set attributes
+     uint8_t  sqes;             // submission queue entry size
+     uint8_t  cqes;             // completion queue entry size
+     uint16_t maxcmd;           // max outstanding commands
+     uint32_t nn;               // number of namespaces
+     uint16_t oncs;             // optional nvm command support
+     uint16_t fuses;            // fused operation support
+     uint8_t  fna;              // format nvm attributes
+     uint8_t  vwc;              // volatile write cache support
+     uint16_t awun;             // atomic write unit (normal)
+     uint16_t awupf;            // atomic write unit (power fail)
+     uint8_t  nvscc;            // nvm vendor-specific command config
+     uint8_t  nwpc;             // namespace write protection capabilities
+     uint16_t acwu;             // atomic compare & write unit
+     uint16_t _rsvd214;         // reserved
+     uint32_t sgls;             // sgl support
+     uint32_t mnan;             // max allowed namespaces
+     uint8_t  _rsvd220[224];    // reserved
 
-    uint16_t cntlid; // Controller ID
-    uint32_t ver; // version
+     // reserved for i/o command set specific data
+     uint8_t  _rsvd_iocs[1344]; // reserved
 
-    uint8_t  sqes; // submission queue entry size
-    uint8_t  cqes; // completion queue entry size
+     // power state descriptors (32 entries, 32 bytes each)
+     uint8_t  psd[1024];        // power state descriptors
 
-    uint16_t maxcmd; // maximum commands supported
-    uint32_t nn; // number of namespaces
-}
-__attribute__((packed))
-nvme_cid_t;
+     // vendor-specific area
+     uint8_t  vs[1024];         // vendor specific
+ }
+ __attribute__((packed))
+ nvme_cid_t;
 
-typedef struct
-{
-	uint64_t nsze;
-	uint64_t ncap;
-	uint64_t nuse;
-	uint8_t nsfeat;
-	uint8_t nlbaf;
-	uint8_t flbas;
-	uint8_t mc;
-	uint8_t dpc;
-	uint8_t dps;
-	uint8_t nmic;
-	uint8_t rescap;
-	uint8_t fpi;
-	uint8_t dlfeat;
-	uint16_t nawun;
-	uint16_t nawupf;
-	uint16_t nacwu;
-	uint16_t nabsn;
-	uint16_t nabo;
-	uint16_t nabspf;
-	uint16_t noiob;
-	uint64_t nvmcap[2];
-	uint16_t npwg;
-	uint16_t npwa;
-	uint16_t npdg;
-	uint16_t npda;
-	uint16_t nows;
-	uint16_t mssrl;
-	uint32_t mcl;
-	uint8_t msrc;
-	uint8_t __reserved0[11];
-	uint32_t adagrpid;
-	uint8_t __reserved1[3];
-	uint8_t nsattr;
-	uint16_t nvmsetid;
-	uint16_t endgid;
-	uint64_t nguid[2];
-	uint64_t eui64;
-	uint32_t lbafN[64];
-	uint8_t vendor_specific[3712];
-}
-__attribute__((packed))
-nvme_nsidn_t;
+ // NVMe Identify Namespace data struct
+ /* source: https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-Revision-2.3-2025.08.01-Ratified.pdf
+    Figure 335 */
+ // ------------
+ typedef struct
+ {
+     uint64_t nsze;             // namespace size (in lbas)
+     uint64_t ncap;             // namespace capacity (in lbas)
+     uint64_t nuse;             // namespace utilization (in lbas)
+     uint8_t  nsfeat;           // namespace features
+     uint8_t  nlbaf;            // number of lba formats (0-based)
+     uint8_t  flbas;            // currently formatted lba size
+     uint8_t  mc;               // metadata capabilities
+     uint8_t  dpc;              // end-to-end data protection capabilities
+     uint8_t  dps;              // active data protection settings
+     uint8_t  nmic;             // multi-path i/o and sharing support
+     uint8_t  rescap;           // reservation capabilities
+     uint8_t  fpi;              // format progress indicator
+     uint8_t  dlfeat;           // deallocate logical block features
+     uint16_t nawun;            // atomic write unit (normal)
+     uint16_t nawupf;           // atomic write unit (power fail)
+     uint16_t nacwu;            // atomic compare & write unit
+     uint16_t nabsn;            // atomic boundary size (normal)
+     uint16_t nabo;             // atomic boundary offset
+     uint16_t nabspf;           // atomic boundary size (power fail)
+     uint16_t noiob;            // optimal i/o boundary
+     uint64_t nvmcap[2];        // nvm capacity (128-bit)
+     uint16_t npwg;             // preferred write granularity
+     uint16_t npwa;             // preferred write alignment
+     uint16_t npdg;             // preferred deallocate granularity
+     uint16_t npda;             // preferred deallocate alignment
+     uint16_t nows;             // optimal write size
+     uint16_t mssrl;            // max single source range length
+     uint32_t mcl;              // max copy length
+     uint8_t  msrc;             // max source range count
+     uint8_t  _rsvd81[11];      // reserved
+     uint32_t anagrpid;         // ana group identifier
+     uint8_t  _rsvd96[3];       // reserved
+     uint8_t  nsattr;           // namespace attributes
+     uint16_t nvmsetid;         // nvm set identifier
+     uint16_t endgid;           // endurance group identifier
+     uint64_t nguid[2];         // namespace globally unique id (128-bit)
+     uint64_t eui64;            // ieee extended unique identifier
+
+     // lba format support (16 entries, 4 bytes each)
+     // bits 0-15: metadata size
+     // bits 16-23: lba data size (2^lbads)
+     // bits 24-25: relative performance
+     uint32_t lbaf[16];         // lba format support
+
+     uint8_t  _rsvd192[192];    // reserved
+     uint8_t  vs[3712];         // vendor specific
+ }
+ __attribute__((packed))
+ nvme_nsidn_t;
 static_assert(sizeof(nvme_nsidn_t) == 4096);
 
 // Register stuff
 /* source: https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-Revision-2.3-2025.08.01-Ratified.pdf
-   pg. 78 */
+   Figure 33 */
 // ------------
-
-// CAP Register
-typedef struct
-{
-    uint64_t mqes     : 16; // Maximum Queue Entries Supported
-    uint64_t cqr      : 1;  // Contiguous Queues Required
-    uint64_t ams      : 2;  // Arbitration Mechanism Supported
-    uint64_t _rsv0    : 5;
-    uint64_t to       : 8;  // Timeout
-    uint64_t dstrd    : 4;  // Doorbell Stride
-    uint64_t nssrs    : 1;  // NVM Subsystem Reset Supported
-    uint64_t css      : 8;  // Command Set Supported
-    uint64_t bps      : 1;  // Boot Partition Support
-    uint64_t cps      : 2;  // Command Formats Supported
-    uint64_t mpsmin   : 4;  // Minimum Memory Page Size
-    uint64_t mpsmax   : 4;  // Maximum Memory Page Size
-    uint64_t pmrs     : 1;  // Persistent Memory Region Support
-    uint64_t cmbs     : 1;  // Controller Memory Buffer Support
-    uint64_t nsss     : 1;  // Namespace Soft Reset Support
-    uint64_t crms     : 2;  // Controller Ready Multi-Status
-    uint64_t nsses    : 1;  // NVM Subsystem Supported
-} __attribute__((packed)) nvme_cap_t;
-
-// CC Register (Controller Configuration)
-typedef struct
-{
-    uint32_t en       : 1;  // Enable
-    uint32_t cfs      : 1;  // Controller Fatal Status
-    uint32_t shn      : 2;  // Shutdown Notification
-    uint32_t iosqes   : 4;  // I/O Submission Queue Entry Size
-    uint32_t iocqes   : 4;  // I/O Completion Queue Entry Size
-    uint32_t ams      : 3;  // Arbitration Mechanism Selected
-    uint32_t mps      : 4;  // Memory Page Size
-    uint32_t css      : 3;  // Command Set Selected
-    uint32_t _rsv0    : 10;
-} __attribute__((packed)) nvme_cc_t;
-
-// CSTS Register (Controller Status)
-typedef struct
-{
-    uint32_t rdy      : 1;  // Ready
-    uint32_t cfs      : 1;  // Controller Fatal Status
-    uint32_t shst     : 2;  // Shutdown Status
-    uint32_t nssro    : 1;  // NVM Subsystem Reset Occurred
-    uint32_t _rsv0    : 27;
-} __attribute__((packed)) nvme_csts_t;
-
-// AQA Register (Admin Queue Attributes)
-typedef struct
-{
-    uint32_t asqs     : 12; // Admin Submission Queue Size
-    uint32_t _rsv0    : 4;
-    uint32_t acqs     : 12; // Admin Completion Queue Size
-    uint32_t _rsv1    : 4;
-} __attribute__((packed)) nvme_aqa_t;
 
 // NVMe Registers (main controller structure)
 typedef volatile struct
 {
-    nvme_cap_t CAP;          // Controller Capabilities
-    uint32_t VS;           // Version
-    uint32_t INTMS;        // Interrupt Mask Set
-    uint32_t INTMC;        // Interrupt Mask Clear
-    nvme_cc_t CC;          // Controller Configuration
+    uint64_t CAP;          // controller capabilities
+    uint32_t VS;           // version
+    uint32_t INTMS;        // interrupt mask set
+    uint32_t INTMC;        // interrupt mask clear
+    uint32_t CC;           // controller configuration
     uint32_t _rsvd0;
-    nvme_csts_t CSTS;      // Controller Status
+    uint32_t CSTS;         //controller status
     uint32_t _rsvd1;
-    nvme_aqa_t AQA;        // Admin Queue Attributes
-    uint64_t ASQ;          // Admin Submission Queue Base Address
-    uint64_t ACQ;          // Admin Completion Queue Base Address
+    uint32_t AQA;          // admin queue attributes
+    uint64_t ASQ;          // admin submission queue base address
+    uint64_t ACQ;          // admin completion queue base address
     uint8_t  _rsvd2[0x1000 - 0x38];
-} __attribute__((packed)) nvme_regs_t;
+}
+__attribute__((packed))
+nvme_regs_t;
 
 // ---------
 
@@ -290,10 +310,12 @@ typedef struct
     nvme_cid_t *identity;
 
     uint32_t db_stride;
+    uint16_t next_qid;
 }
 __attribute__((packed))
 nvme_t;
 
+// NVMe namespace
 typedef struct
 {
     nvme_t* controller;

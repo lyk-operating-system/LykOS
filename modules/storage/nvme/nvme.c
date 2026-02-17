@@ -1,31 +1,31 @@
-#include "mm/dma.h"
-#include "mm/heap.h"
-#include "mm/vm.h"
-#include <stdint.h>
-#define LOG_PREFIX "NVME"
 #include "nvme.h"
+#include "nvme_hw.h"
 
+#include "arch/lcpu.h"
+#include "dev/bus/pci.h"
 #include "dev/storage/drive.h"
 #include "log.h"
-#include "dev/bus/pci.h"
-#include "mm/mm.h"
 #include "mm/mmio.h"
-#include "arch/lcpu.h"
+#include "mm/heap.h"
+#include "mm/vm.h"
 #include "sync/spinlock.h"
-#include "utils/string.h"
+#include <stdint.h>
+
+// --- LOGGING HELPERS ---
+
+static void nvme_copy_trim(char *dst, size_t dstsz, const char *src, size_t srclen)
+{
+    size_t n = (srclen < dstsz - 1) ? srclen : (dstsz - 1);
+    memcpy(dst, src, n);
+    dst[n] = 0;
+
+    // trim trailing spaces
+    for (size_t i = (size_t)n - 1; i >= 0 && dst[i] == ' '; --i)
+        dst[i] = 0;
+}
 
 
-#define NVME_CC_OFF   0x14
-#define NVME_CSTS_OFF 0x1C
-
-#define CC_EN          (1u << 0)
-#define CC_CSS_SHIFT   4
-#define CC_MPS_SHIFT   7
-#define CC_AMS_SHIFT   11
-#define CC_IOSQES_SHIFT 16
-#define CC_IOCQES_SHIFT 20
-
-// --- HELPERS ---
+// --- FUNCTIONAL HELPERS ---
 
 volatile nvme_cq_entry_t *nvme_poll_cq(nvme_t *nvme, nvme_queue_t *queue)
 {
@@ -52,28 +52,21 @@ volatile nvme_cq_entry_t *nvme_poll_cq(nvme_t *nvme, nvme_queue_t *queue)
     return entry;
 }
 
-static inline uint32_t nvme_read_reg(volatile void *base, uintptr_t off)
-{
-    return *(volatile uint32_t *)((uintptr_t)base + off);
-}
-static inline void nvme_write_reg(volatile void *base, uintptr_t off, uint32_t v)
-{
-    *(volatile uint32_t *)((uintptr_t)base + off) = v;
-}
-
 static void nvme_wait_ready(nvme_t *nvme, bool ready)
 {
-    nvme_cap_t cap = nvme->registers->CAP;
-    uint32_t to = cap.to ? cap.to : 1;
+    uint64_t cap_raw = mmio_read64(&nvme->registers->CAP);
+    uint32_t to = NVME_CAP_TO(cap_raw);
+    if (to == 0) to = 1;
     uint64_t timeout = (uint64_t)to * 5000000ull;
 
-    while (nvme->registers->CSTS.rdy != ready && timeout--)
+
+    while ((((mmio_read32(&nvme->registers->CSTS) & NVME_CSTS_RDY) != 0) ? 1 : 0) != (ready ? 1 : 0) && timeout--)
         arch_lcpu_relax();
 
     if (timeout == 0)
     {
-        uint32_t csts = nvme_read_reg(nvme->registers, NVME_CSTS_OFF);
-        uint32_t cc   = nvme_read_reg(nvme->registers, NVME_CC_OFF);
+        uint32_t csts = mmio_read32(&nvme->registers->CSTS);
+        uint32_t cc   = mmio_read32(&nvme->registers->CC);
         log(LOG_ERROR, "wait_ready timeout want=%d CSTS=0x%08x CC=0x%08x", ready, csts, cc);
     }
 }
@@ -82,26 +75,25 @@ static void nvme_wait_ready(nvme_t *nvme, bool ready)
 
 void nvme_reset(nvme_t *nvme)
 {
-    log(LOG_DEBUG, "Resetting...");
+    uint32_t cc = mmio_read32(&nvme->registers->CC);
+    cc &= ~NVME_CC_EN;
+    mmio_write32(&nvme->registers->CC, cc);
 
-    // Spec wants: set EN=0 then wait RDY=0
-    nvme->registers->CC.en = 0;
     nvme_wait_ready(nvme, false);
 }
 
 void nvme_start(nvme_t *nvme)
 {
     uint32_t cc = 0;
-    cc |= (0u << CC_CSS_SHIFT);      // NVM
-    cc |= (0u << CC_MPS_SHIFT);      // 4KiB
-    cc |= (0u << CC_AMS_SHIFT);      // round-robin
-    cc |= (6u << CC_IOSQES_SHIFT);   // 64B
-    cc |= (4u << CC_IOCQES_SHIFT);   // 16B
-    cc |= CC_EN;
+    cc |= (0u << NVME_CC_CSS_SHIFT);     // NVM
+    cc |= (0u << NVME_CC_MPS_SHIFT);     // 4KiB
+    cc |= (0u << NVME_CC_AMS_SHIFT);     // RR
+    cc |= (6u << NVME_CC_IOSQES_SHIFT);  // 64B
+    cc |= (4u << NVME_CC_IOCQES_SHIFT);  // 16B
+    cc |= NVME_CC_EN;
 
-    nvme_write_reg(nvme->registers, NVME_CC_OFF, cc);
-    (void)nvme_read_reg(nvme->registers, NVME_CC_OFF);
-
+    mmio_write32(&nvme->registers->CC, cc);
+    (void)mmio_read32(&nvme->registers->CC); // flush
     nvme_wait_ready(nvme, true);
 }
 
@@ -124,7 +116,7 @@ static void nvme_create_admin_queue(nvme_t *nvme)
     memset(aq->sq_dma.vaddr, 0, sq_size);
     memset(aq->cq_dma.vaddr, 0, cq_size);
 
-    aq->qid = 0;
+    aq->qid = nvme->next_qid++;
     aq->depth = NVME_ADMIN_QUEUE_DEPTH;
     aq->head = 0;
     aq->tail = 0;
@@ -134,19 +126,19 @@ static void nvme_create_admin_queue(nvme_t *nvme)
     memset(aq->cid_used, 0, sizeof(aq->cid_used));
     aq->lock = SPINLOCK_INIT;
 
-    nvme->registers->AQA.asqs = NVME_ADMIN_QUEUE_DEPTH - 1;
-    nvme->registers->AQA.acqs = NVME_ADMIN_QUEUE_DEPTH - 1;
+    uint32_t aqa = 0;
+    aqa |= ((NVME_ADMIN_QUEUE_DEPTH - 1) & 0x0FFFu);         // ASQS bits 11:0
+    aqa |= (((NVME_ADMIN_QUEUE_DEPTH - 1) & 0x0FFFu) << 16); // ACQS bits 27:16
+    mmio_write32(&nvme->registers->AQA, aqa);
 
-    nvme->registers->ASQ = aq->sq_dma.paddr;
-    nvme->registers->ACQ = aq->cq_dma.paddr;
+    mmio_write64(&nvme->registers->ASQ, aq->sq_dma.paddr);
+    mmio_write64(&nvme->registers->ACQ, aq->cq_dma.paddr);
 }
 
 // --- COMMAND FUNCTIONS ---
 
 static uint16_t nvme_submit_command(nvme_t *nvme, uint8_t opc, nvme_command_t command, nvme_queue_t *q)
 {
-    // nvme_queue_t *q = nvme->admin_queue;
-
     spinlock_acquire(&q->lock);
 
     uint16_t cid = UINT16_MAX;
@@ -196,15 +188,17 @@ static uint16_t nvme_submit_command(nvme_t *nvme, uint8_t opc, nvme_command_t co
 
 static void nvme_wait_completion(nvme_t *nvme, uint16_t cid, nvme_queue_t *q)
 {
-    nvme_cap_t cap = nvme->registers->CAP;
-    uint64_t timeout = (uint64_t)(cap.to ? cap.to : 1) * 5000000ull;
+    uint64_t cap_raw = mmio_read64(&nvme->registers->CAP);
+    uint32_t to = NVME_CAP_TO(cap_raw);
+    if (to == 0) to = 1;
+    uint64_t timeout = (uint64_t)to * 5000000ull;
 
     while (timeout--)
     {
         volatile nvme_cq_entry_t *entry = nvme_poll_cq(nvme, q);
         if (entry && entry->cid == cid)
         {
-            // Read raw DW3 of CQE (bytes 12..15). This avoids any bitfield/layout issues.
+            // decode raw DW3 for error details
             uint32_t dw3 = *(volatile uint32_t *)((volatile uint8_t *)entry + 12);
 
             uint8_t  p   = (uint8_t)((dw3 >> 16) & 0x1u);
@@ -239,7 +233,7 @@ static void nvme_wait_completion(nvme_t *nvme, uint16_t cid, nvme_queue_t *q)
 
 static void nvme_create_io_queue(nvme_t *nvme)
 {
-    const uint16_t qid = 1; // TO-DO: change, hard-coded for now
+    const uint16_t qid = nvme->next_qid++;
 
     size_t sq_size = NVME_IO_QUEUE_DEPTH * sizeof(nvme_sq_entry_t);
     size_t cq_size = NVME_IO_QUEUE_DEPTH * sizeof(nvme_cq_entry_t);
@@ -299,71 +293,17 @@ static void nvme_create_io_queue(nvme_t *nvme)
     // doorbells init
     NVME_SQ_TDBL(nvme->registers, qid, nvme->db_stride) = 0;
     NVME_CQ_HDBL(nvme->registers, qid, nvme->db_stride) = 0;
-
-    log(LOG_INFO, "Created IO QP qid=%u depth=%u SQ(p)=0x%llx CQ(p)=0x%llx",
-        qid, NVME_IO_QUEUE_DEPTH,
-        (unsigned long long)ioq->sq_dma.paddr,
-        (unsigned long long)ioq->cq_dma.paddr);
 }
 
 // --- ACTUAL COMMANDS ---
 
-static void nvme_identify_controller(nvme_t *nvme)
-{
-    dma_buf_t id_dma = dma_alloc(4096);
-    if (!id_dma.vaddr)
-    {
-        log(LOG_ERROR, "identify controller: dma alloc failed");
-        return;
-    }
-    memset(id_dma.vaddr, 0, 4096);
-
-    nvme_command_t cmd = (nvme_command_t){0};
-    cmd.dptr.prp1 = id_dma.paddr;
-    cmd.cdw10 = 1;
-
-    uint16_t cid = nvme_submit_command(nvme, 0x06, cmd, nvme->admin_queue);
-    if (cid != UINT16_MAX)
-        nvme_wait_completion(nvme, cid, nvme->admin_queue);
-
-    nvme->identity = (nvme_cid_t *)vm_alloc(4096);
-    memcpy(nvme->identity, id_dma.vaddr, 4096);
-
-    uint8_t *id = (uint8_t *)nvme->identity;
-
-    // TO-DO: Fix this bullshit
-    uint16_t vid   = *(uint16_t *)(id + 0x000);
-    uint16_t ssvid = *(uint16_t *)(id + 0x002);
-    uint8_t  mdts  = *(uint8_t  *)(id + 0x04D);
-    uint32_t nn    = *(uint32_t *)(id + 0x204);
-
-    uint32_t vs    = nvme->registers->VS;
-
-    log(LOG_INFO, "NVMe Identify: VID=%04x SSVID=%04x VS=0x%08x NN(max_nsid)=%u MDTS=%u",
-        vid, ssvid, vs, nn, mdts);
-
-    char sn[21], mn[41], fr[9];
-    memcpy(sn, id + 0x004, 20); sn[20] = 0;
-    memcpy(mn, id + 0x018, 40); mn[40] = 0;
-    memcpy(fr, id + 0x040, 8);  fr[8]  = 0;
-
-    // trim trailing spaces
-    for (int i = 19; i >= 0 && sn[i] == ' '; i--) sn[i] = 0;
-    for (int i = 39; i >= 0 && mn[i] == ' '; i--) mn[i] = 0;
-    for (int i = 7;  i >= 0 && fr[i] == ' '; i--) fr[i] = 0;
-
-    log(LOG_INFO, "NVMe Identify: SN='%s' MN='%s' FR='%s'", sn, mn, fr);
-
-    dma_free(&id_dma);
-}
-
-int nvme_read(drive_t *d, const void *buf, uint64_t lba, uint64_t count)
+int nvme_read(drive_t *d, void *buf, uint64_t lba, uint64_t count)
 {
     nvme_namespace_t *ns = (nvme_namespace_t*)d->device.driver_data;
     nvme_t *nvme = ns->controller;
     nvme_queue_t *ioq = nvme->io_queue;
 
-    uint8_t *out = (uint8_t *)(uintptr_t)buf; // why
+    uint8_t *out = (uint8_t *)buf; // make it pointer to bytes
     dma_buf_t dma = dma_alloc(4096); // single 4k dma page for prp1-only for now
 
     uint64_t remaining = count;
@@ -390,9 +330,8 @@ int nvme_read(drive_t *d, const void *buf, uint64_t lba, uint64_t count)
         cmd.dptr.prp1 = dma.paddr;
         cmd.dptr.prp2 = 0;
 
-        // explain
-        cmd.cdw10 = (uint32_t)(cur_lba & 0xFFFFFFFFu);
-        cmd.cdw11 = (uint32_t)(cur_lba >> 32);
+        cmd.cdw10 = (uint32_t)(cur_lba & 0xFFFFFFFFu); // low half
+        cmd.cdw11 = (uint32_t)(cur_lba >> 32);         // high half
         cmd.cdw12 = (uint32_t)(((blocks - 1) & 0xFFFFu)); // NLB = blocks-1
 
         uint16_t cid = nvme_submit_command(nvme, 0x02, cmd, ioq);
@@ -421,7 +360,7 @@ int nvme_write(drive_t *d, const void *buf, uint64_t lba, uint64_t count)
     nvme_t *nvme = ns->controller;
     nvme_queue_t *ioq = nvme->io_queue;
 
-    const uint8_t *in = (uint8_t *)(uintptr_t)buf; // why
+    const uint8_t *in = (const uint8_t *)buf; // make it pointer to bytes
     dma_buf_t dma = dma_alloc(4096); // single 4k dma page for prp1-only for now
 
     uint64_t remaining = count;
@@ -468,6 +407,38 @@ int nvme_write(drive_t *d, const void *buf, uint64_t lba, uint64_t count)
     return 0;
 }
 
+// --- IDENTIFY COMMANDS ---
+static void nvme_identify_controller(nvme_t *nvme)
+{
+    dma_buf_t id_dma = dma_alloc(4096);
+    if (!id_dma.vaddr)
+    {
+        log(LOG_ERROR, "identify controller: dma alloc failed");
+        return;
+    }
+    memset(id_dma.vaddr, 0, 4096);
+
+    nvme_command_t cmd = (nvme_command_t){0};
+    cmd.dptr.prp1 = id_dma.paddr;
+    cmd.cdw10 = 1;
+
+    uint16_t cid = nvme_submit_command(nvme, 0x06, cmd, nvme->admin_queue);
+    if (cid != UINT16_MAX)
+        nvme_wait_completion(nvme, cid, nvme->admin_queue);
+
+    nvme->identity = (nvme_cid_t *)vm_alloc(4096);
+    memcpy(nvme->identity, id_dma.vaddr, 4096);
+
+    char sn[21], mn[41], fr[9];
+    nvme_copy_trim(sn, sizeof(sn), nvme->identity->sn, 20);
+    nvme_copy_trim(mn, sizeof(mn), nvme->identity->mn, 40);
+    nvme_copy_trim(fr, sizeof(fr), nvme->identity->fr, 8);
+
+    log(LOG_INFO, "NVMe Identify: SN='%s' MN='%s' FR='%s'", sn, mn, fr);
+
+    dma_free(&id_dma);
+}
+
 static void nvme_identify_namespace(nvme_t *nvme)
 {
     ASSERT(nvme);
@@ -506,22 +477,25 @@ static void nvme_identify_namespace(nvme_t *nvme)
         if (cid != UINT16_MAX)
             nvme_wait_completion(nvme, cid, nvme->admin_queue);
 
-        // LOGGING
-        nvme_nsidn_t *ns = (nvme_nsidn_t *)ns_dma.vaddr;
+        /* LOGGING
+        *//*
                log(LOG_INFO, "Namespace Identify: NSID=%u NSZE=%llu NCAP=%llu FLBAS=0x%02x",
                    nsid,
                    (unsigned long long)ns->nsze,
                    (unsigned long long)ns->ncap,
                    (unsigned)ns->flbas);
+                   */
 
-        // add namespace as storage drive
+        // here we add namespace as a storage drive
+
         // create namespace object
-        uint8_t *buf = (uint8_t *)ns_dma.vaddr;
-
-        uint64_t ncap  = *(uint64_t *)(buf + 0x08);
-        uint8_t  flbas = *(uint8_t  *)(buf + 0x1A);
+        nvme_nsidn_t *ns = (nvme_nsidn_t *)ns_dma.vaddr;
+        uint64_t ncap  = ns->ncap;
+        uint8_t  flbas = ns->flbas;
         uint8_t  idx   = flbas & 0x0F;
-        uint8_t  lbads = *(uint8_t  *)(buf + 0x80 + idx * 16 + 2);
+        const uint8_t *lbaf = (const uint8_t *)ns + 0x80;
+        uint8_t lbads = lbaf[idx * 16 + 2];
+
         uint32_t lba_size = 1u << lbads;
 
         nvme_namespace_t *nsobj = heap_alloc(sizeof(nvme_namespace_t)); // TO-DO: free this at some point
@@ -550,50 +524,8 @@ static void nvme_identify_namespace(nvme_t *nvme)
 
         drive_mount(d);
 
-        log(LOG_INFO, "Mount nsid=%u ncap=%llu lbads=%u lba_size=%u",
+        log(LOG_INFO, "Mounted device: nsid=%u ncap=%llu lbads=%u lba_size=%u",
             nsid, (unsigned long long)ncap, lbads, lba_size);
-
-        uint8_t *tmp = vm_alloc(4096);
-        memset(tmp, 0, 4096);
-
-        // --- WRITE test pattern to LBA 8 ---
-        const uint64_t test_lba = 8;
-        const uint64_t test_cnt = 1; // 1 sector (512B on your namespace)
-
-        const char *msg = "LYKOS NVME WRITE/READ TEST\n";
-        size_t msg_len = strlen(msg);
-        if (msg_len > d->sector_size) msg_len = d->sector_size;
-
-        memcpy(tmp, msg, msg_len);
-
-        // fill the rest of the sector with a simple pattern
-        for (uint64_t i = msg_len; i < d->sector_size; i++)
-            tmp[i] = (uint8_t)(i & 0xFF);
-
-        int wrc = d->write_sectors(d, tmp, test_lba, test_cnt);
-        log(LOG_INFO, "nvme_write test wrc=%d lba=%llu cnt=%llu",
-            wrc, (unsigned long long)test_lba, (unsigned long long)test_cnt);
-
-        // --- READ back from LBA 8 ---
-        memset(tmp, 0xAA, 4096);
-
-        int rrc = d->read_sectors(d, tmp, test_lba, test_cnt);
-        log(LOG_INFO, "nvme_readback rrc=%d bytes[0..15]=%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-            rrc,
-            tmp[0], tmp[1], tmp[2], tmp[3], tmp[4], tmp[5], tmp[6], tmp[7],
-            tmp[8], tmp[9], tmp[10], tmp[11], tmp[12], tmp[13], tmp[14], tmp[15]);
-
-        // optional: print ASCII prefix (up to 32 chars)
-        char asc[33];
-        for (int i = 0; i < 32; i++)
-        {
-            uint8_t c = tmp[i];
-            asc[i] = (c >= 32 && c <= 126) ? (char)c : '.';
-        }
-        asc[32] = 0;
-        log(LOG_INFO, "nvme_readback ascii32='%s'", asc);
-
-        vm_free(tmp);
 
         dma_free(&ns_dma);
     }
@@ -604,13 +536,11 @@ static void nvme_identify_namespace(nvme_t *nvme)
 
 void nvme_init(volatile pci_header_type0_t *header)
 {
-    log(LOG_DEBUG, "Starting NVMe init...");
-
     volatile uint16_t *cmd = (volatile uint16_t *)((volatile uint8_t *)header + 0x04);
     uint16_t v = *cmd;
 
     v |= (1u << 1) | (1u << 2);        // MEM + BUS MASTER
-    v &= (uint16_t)~(1u << 10);        // clear INTx disable (allow legacy INTx for now)
+    v &= (uint16_t)~(1u << 10);        // clear INTx disable
 
     *cmd = v;
     (void)*cmd;
@@ -630,8 +560,8 @@ void nvme_init(volatile pci_header_type0_t *header)
     }
 
     // doorbell stride = 4 << CAP.DSTRD
-    nvme_cap_t *cap = (nvme_cap_t *)&nvme->registers->CAP;
-    nvme->db_stride = 4u << cap->dstrd;
+    uint64_t cap_raw = mmio_read64(&nvme->registers->CAP);
+    nvme->db_stride = 4u << NVME_CAP_DSTRD(cap_raw);
 
     nvme_reset(nvme);
     nvme_create_admin_queue(nvme);
