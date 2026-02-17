@@ -244,7 +244,8 @@ bool arch_paging_vaddr_to_paddr(const arch_paging_map_t *map, uintptr_t vaddr, u
 
     if (pml3ent & PTE_HUGE)
     {
-        *out_paddr = PTE_ADDR_MASK(pml3ent) + (vaddr & ((1ull << 30) - 1));
+        if (out_paddr)
+            *out_paddr = PTE_ADDR_MASK(pml3ent) + (vaddr & ((1ull << 30) - 1));
         return true;
     }
 
@@ -255,7 +256,8 @@ bool arch_paging_vaddr_to_paddr(const arch_paging_map_t *map, uintptr_t vaddr, u
 
     if (pml2ent & PTE_HUGE)
     {
-        *out_paddr = PTE_ADDR_MASK(pml2ent) + (vaddr & ((1ull << 21) - 1));
+        if (out_paddr)
+            *out_paddr = PTE_ADDR_MASK(pml2ent) + (vaddr & ((1ull << 21) - 1));
         return true;
     }
 
@@ -264,7 +266,8 @@ bool arch_paging_vaddr_to_paddr(const arch_paging_map_t *map, uintptr_t vaddr, u
     if (!(pml1ent & PTE_PRESENT))
         return false;
 
-    *out_paddr = PTE_ADDR_MASK(pml1ent) + (vaddr & 0xFFF);
+    if (out_paddr)
+        *out_paddr = PTE_ADDR_MASK(pml1ent) + (vaddr & 0xFFF);
     return true;
 }
 

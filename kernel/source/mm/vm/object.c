@@ -1,4 +1,4 @@
-#include "mm/vm/vm_object.h"
+#include "mm/vm/object.h"
 
 #include "assert.h"
 #include "mm/heap.h"
@@ -26,6 +26,7 @@ vm_object_t *vm_object_create(vm_object_type_t type, size_t size)
 
     obj->type = type;
     obj->size = size;
+    obj->flags = 0;
     obj->cached_pages = XARRAY_INIT;
     obj->ops = ops_table[type];
     memset(&obj->source, 0, sizeof(obj->source));
@@ -35,12 +36,11 @@ vm_object_t *vm_object_create(vm_object_type_t type, size_t size)
     return obj;
 }
 
-void vm_object_destroy(vm_object_t *obj)
+static void vm_object_destroy(vm_object_t *obj)
 {
     ASSERT(ref_read(&obj->refcount) == 1);
 
     obj->ops->destroy(obj);
-
     heap_free(obj);
 }
 
@@ -61,8 +61,9 @@ void vm_object_unref(vm_object_t *obj)
 
 bool vm_object_get_page(vm_object_t *obj, size_t offset, page_t **page_out)
 {
-    spinlock_acquire(&obj->slock);
+    ASSERT(offset < obj->size);
 
+    spinlock_acquire(&obj->slock);
     page_t *page = xa_get(&obj->cached_pages, offset);
     if (page)
     {
@@ -70,11 +71,10 @@ bool vm_object_get_page(vm_object_t *obj, size_t offset, page_t **page_out)
         spinlock_release(&obj->slock);
         return true;
     }
-
-    // Cache miss
-    return obj->ops->get_page(obj, offset, page_out);
-
     spinlock_release(&obj->slock);
+
+    // Delegate to object-specific pager
+    return obj->ops->get_page(obj, offset, page_out);
 }
 
 void vm_object_insert_page(vm_object_t *obj, page_t *page, size_t offset)
@@ -84,20 +84,19 @@ void vm_object_insert_page(vm_object_t *obj, page_t *page, size_t offset)
     spinlock_release(&obj->slock);
 }
 
-void vm_object_remove_page(vm_object_t *obj, size_t offset)
-{
-    spinlock_acquire(&obj->slock);
-    xa_remove(&obj->cached_pages, offset);
-    spinlock_release(&obj->slock);
-}
-
 page_t *vm_object_lookup_page(vm_object_t *obj, size_t offset)
 {
     spinlock_acquire(&obj->slock);
     page_t *page = xa_get(&obj->cached_pages, offset);
     spinlock_release(&obj->slock);
-
     return page;
+}
+
+void vm_object_remove_page(vm_object_t *obj, size_t offset)
+{
+    spinlock_acquire(&obj->slock);
+    xa_remove(&obj->cached_pages, offset);
+    spinlock_release(&obj->slock);
 }
 
 /*

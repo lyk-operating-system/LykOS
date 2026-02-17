@@ -6,11 +6,6 @@
 #define MIB (KIB * 1024ull)
 #define GIB (MIB * 1024ull)
 
-#define MM_PROT_WRITE   0x1
-#define MM_PROT_USER    0x2
-#define MM_PROT_EXEC    0x4
-#define MM_PROT_FULL    (MM_PROT_WRITE | MM_PROT_USER | MM_PROT_EXEC)
-
 typedef struct
 {
     bool read  : 1;
@@ -36,14 +31,6 @@ typedef enum
     VM_CACHE_NONE           // Uncached
 }
 vm_cache_t;
-
-typedef enum
-{
-    VM_PF_READ,
-    VM_PF_WRITE,
-    VM_PF_EXEC
-}
-vm_pf_type;
 
 void *memcpy(void *restrict dest, const void *restrict src, size_t n);
 

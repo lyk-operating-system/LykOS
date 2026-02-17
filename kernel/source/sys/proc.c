@@ -20,9 +20,9 @@ sys_ret_t syscall_exit(int code)
 
 sys_ret_t syscall_fork()
 {
-    proc_fork(sys_curr_proc());
+    proc_t *child_proc = proc_fork(sys_curr_proc());
 
-    return (sys_ret_t) {0, EOK};
+    return (sys_ret_t) {child_proc->pid, EOK};
 }
 
 sys_ret_t syscall_get_cwd()

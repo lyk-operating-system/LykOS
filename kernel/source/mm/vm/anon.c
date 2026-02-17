@@ -1,41 +1,40 @@
-#include "mm/vm/vm_object.h"
+#include "mm/vm/object.h"
 
 #include "hhdm.h"
 #include "mm/mm.h"
 #include "mm/pm.h"
 
-static bool get_page(vm_object_t *obj, size_t offset, page_t **page_out)
+static bool anon_get_page(vm_object_t *obj, size_t offset, page_t **page_out)
 {
     page_t *page = pm_alloc(0);
     if (!page)
         return false;
 
     memset((void *)(page->addr + HHDM), 0, ARCH_PAGE_GRAN);
-    xa_insert(&obj->cached_pages, offset, page);
+
+    vm_object_insert_page(obj, page, offset);
+
     *page_out = page;
-
     return true;
 }
 
-static bool put_page(vm_object_t *obj, page_t *page)
-{
-    return true;
-}
-
-static bool copy_page(vm_object_t *obj, size_t offset, page_t *src, page_t **dst_out)
+static bool anon_copy_page(vm_object_t *obj, size_t offset, page_t *src, page_t **page_out)
 {
     page_t *dst = pm_alloc(0);
     if (!dst)
         return false;
 
-    memcpy((void *)(dst->addr + HHDM), (void *)(src->addr + HHDM), ARCH_PAGE_GRAN);
-    xa_insert(&obj->cached_pages, offset, dst);
-    *dst_out = dst;
+    memcpy((void *)(dst->addr + HHDM),
+           (void *)(src->addr + HHDM),
+           ARCH_PAGE_GRAN);
 
+    vm_object_insert_page(obj, dst, offset);
+
+    *page_out = dst;
     return true;
 }
 
-static void destroy(vm_object_t *obj)
+static void anon_destroy(vm_object_t *obj)
 {
     void *ptr;
     size_t index = 0;
@@ -45,8 +44,8 @@ static void destroy(vm_object_t *obj)
 }
 
 vm_object_ops_t anon_ops = {
-    .get_page = get_page,
-    .put_page = put_page,
-    .copy_page = copy_page,
-    .destroy = destroy,
+    .get_page  = anon_get_page,
+    .put_page  = NULL,
+    .copy_page = anon_copy_page,
+    .destroy   = anon_destroy,
 };

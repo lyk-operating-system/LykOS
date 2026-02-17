@@ -9,7 +9,7 @@
 #include "mm/heap.h"
 #include "mm/mm.h"
 #include "mm/pm.h"
-#include "mm/vm/vm_object.h"
+#include "mm/vm/object.h"
 #include "panic.h"
 #include "sync/spinlock.h"
 #include "uapi/errno.h"
@@ -107,21 +107,67 @@ static vm_segment_t *find_seg(vm_addrspace_t *as, uintptr_t addr)
 
 // Page fault handler
 
-bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_pf_type pf_type)
+bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_protection_t type)
 {
     vm_segment_t *seg = check_collision(as, virt, 1);
     if (!seg)
         return false;
 
-    size_t offset = (virt - seg->start) + seg->offset;
-    offset = FLOOR(offset, ARCH_PAGE_GRAN);
-
-    page_t *page = NULL;
-    if (!vm_object_get_page(seg->object, offset, &page))
+    // Protection check
+    if ((type.write && !(seg->prot.write)) ||
+        (type.exec  && !(seg->prot.exec))  ||
+        (type.read  && !(seg->prot.read)))
         return false;
 
     uintptr_t vaddr_aligned = FLOOR(virt, ARCH_PAGE_GRAN);
-    arch_paging_map_page(as->page_map, vaddr_aligned, page->addr, ARCH_PAGE_GRAN, seg->prot, VM_CACHE_STANDARD);
+    size_t offset = ((vaddr_aligned - seg->start) / ARCH_PAGE_GRAN) + seg->offset;
+
+    vm_object_t *obj = seg->object;
+    page_t *page = NULL;
+    if (!vm_object_get_page(obj, offset, &page))
+        return false;
+
+    /*
+     * COW logic
+     *
+     * If:
+     *  - write fault
+     *  - mapping is private
+     *  - page not already present in top-level object
+     */
+    if (type.write /*&& (seg->flags & VM_MAP_PRIVATE)*/)
+    {
+        page_t *existing = vm_object_lookup_page(obj, offset);
+
+        if (!existing)
+        {
+            page_t *new_page = NULL;
+
+            if (!obj->ops->copy_page(obj, offset, page, &new_page))
+                return false;
+
+            page = new_page;
+        }
+        else
+            page = existing;
+    }
+
+    if (arch_paging_vaddr_to_paddr(as->page_map, vaddr_aligned, NULL))
+        arch_paging_prot_page(
+            as->page_map,
+            vaddr_aligned,
+            ARCH_PAGE_GRAN,
+            seg->prot
+        );
+    else
+        arch_paging_map_page(
+            as->page_map,
+            vaddr_aligned,
+            page->addr,
+            ARCH_PAGE_GRAN,
+            seg->prot,
+            VM_CACHE_STANDARD
+        );
 
     return true;
 }
@@ -433,7 +479,6 @@ vm_addrspace_t *vm_addrspace_clone(vm_addrspace_t *parent_as)
         child_seg->object = child_shadow;
 
         list_append(&new_as->segments, &child_seg->list_node);
-
 
         for (size_t i = 0; i < parent_seg->length; i += ARCH_PAGE_GRAN)
         {

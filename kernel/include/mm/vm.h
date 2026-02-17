@@ -53,7 +53,7 @@ extern vm_addrspace_t *vm_kernel_as;
 
 // Page fault handler
 
-bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_pf_type pf_type);
+bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_protection_t type);
 
 // Mapping and unmapping
 

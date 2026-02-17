@@ -1,4 +1,4 @@
-#include "mm/vm/vm_object.h"
+#include "mm/vm/object.h"
 
 #include "assert.h"
 #include "hhdm.h"
@@ -7,24 +7,22 @@
 
 static bool get_page(vm_object_t *obj, size_t offset, page_t **page_out)
 {
-    // Check local cache aka already COWed pages.
-    page_t *page = xa_get(&obj->cached_pages, offset);
+    ASSERT(obj->source.shadow.parent);
+
+    page_t *page = vm_object_lookup_page(obj, offset);
     if (page)
     {
         *page_out = page;
         return true;
     }
 
-    // Page miss -> delegate to parent
-    ASSERT(obj->source.shadow.parent);
-    return obj->source.shadow.parent->ops->get_page(obj->source.shadow.parent, offset, page_out);
+    // delegate to parent
+    return vm_object_get_page(obj->source.shadow.parent, offset, page_out);
 }
 
 static bool put_page(vm_object_t *obj, page_t *page)
 {
-    // Sync the backing parent.
-    ASSERT(obj->source.shadow.parent);
-    return obj->source.shadow.parent->ops->put_page(obj->source.shadow.parent, page);
+    return true;
 }
 
 // Called during a write fault to perform COW
@@ -34,14 +32,14 @@ static bool copy_page(vm_object_t *obj, size_t offset, page_t *src, page_t **dst
     if (!dst)
         return false;
 
-    memcpy((void *)(dst->addr + HHDM), (void *)(src->addr + HHDM), ARCH_PAGE_GRAN);
-    if (!xa_insert(&obj->cached_pages, offset, dst))
-    {
-        pm_free(dst);
-        return false;
-    }
-    *dst_out = dst;
+    memcpy(
+        (void *)(dst->addr + HHDM),
+        (void *)(src->addr + HHDM),
+        ARCH_PAGE_GRAN
+    );
+    vm_object_insert_page(obj, dst, offset);
 
+    *dst_out = dst;
     return true;
 }
 
@@ -53,7 +51,6 @@ static void destroy(vm_object_t *obj)
         pm_free((page_t *)ptr);
 
     // Drop reference to parent
-    ASSERT(obj->source.shadow.parent);
     vm_object_unref(obj->source.shadow.parent);
 }
 

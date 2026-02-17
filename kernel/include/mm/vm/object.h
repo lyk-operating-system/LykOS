@@ -27,8 +27,8 @@ enum vm_object_type
 
 struct vm_object_ops
 {
-    bool (*get_page)(vm_object_t *obj, size_t offset, page_t **page_out);
-    bool (*put_page)(vm_object_t *obj, page_t *page);
+    bool (*get_page) (vm_object_t *obj, size_t offset, page_t **page_out);
+    bool (*put_page) (vm_object_t *obj, page_t *page);
     bool (*copy_page)(vm_object_t *obj, size_t offset, page_t *src, page_t **dst_out);
 
     void (*destroy)(vm_object_t *obj);

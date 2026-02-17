@@ -1,4 +1,4 @@
-#include "mm/vm/vm_object.h"
+#include "mm/vm/object.h"
 #include "mm/pm.h"
 
 static bool get_page(vm_object_t *obj, size_t offset, page_t **page_out)
