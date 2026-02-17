@@ -97,45 +97,7 @@ void nvme_start(nvme_t *nvme)
     nvme_wait_ready(nvme, true);
 }
 
-// --- ADMIN FUNCS ---
-
-static void nvme_create_admin_queue(nvme_t *nvme)
-{
-    size_t sq_size = NVME_ADMIN_QUEUE_DEPTH * sizeof(nvme_sq_entry_t);
-    size_t cq_size = NVME_ADMIN_QUEUE_DEPTH * sizeof(nvme_cq_entry_t);
-
-    nvme_queue_t *aq = vm_alloc(sizeof(nvme_queue_t));
-    nvme->admin_queue = aq;
-
-    aq->sq_dma = dma_alloc(sq_size);
-    aq->cq_dma = dma_alloc(cq_size);
-
-    aq->sq = (nvme_sq_entry_t *)aq->sq_dma.vaddr;
-    aq->cq = (volatile nvme_cq_entry_t *)aq->cq_dma.vaddr;
-
-    memset(aq->sq_dma.vaddr, 0, sq_size);
-    memset(aq->cq_dma.vaddr, 0, cq_size);
-
-    aq->qid = nvme->next_qid++;
-    aq->depth = NVME_ADMIN_QUEUE_DEPTH;
-    aq->head = 0;
-    aq->tail = 0;
-    aq->phase = 1;
-
-    aq->next_cid = 0;
-    memset(aq->cid_used, 0, sizeof(aq->cid_used));
-    aq->lock = SPINLOCK_INIT;
-
-    uint32_t aqa = 0;
-    aqa |= ((NVME_ADMIN_QUEUE_DEPTH - 1) & 0x0FFFu);         // ASQS bits 11:0
-    aqa |= (((NVME_ADMIN_QUEUE_DEPTH - 1) & 0x0FFFu) << 16); // ACQS bits 27:16
-    mmio_write32(&nvme->registers->AQA, aqa);
-
-    mmio_write64(&nvme->registers->ASQ, aq->sq_dma.paddr);
-    mmio_write64(&nvme->registers->ACQ, aq->cq_dma.paddr);
-}
-
-// --- COMMAND FUNCTIONS ---
+// --- QUEUE FUNCS ---
 
 static uint16_t nvme_submit_command(nvme_t *nvme, uint8_t opc, nvme_command_t command, nvme_queue_t *q)
 {
@@ -229,7 +191,43 @@ static void nvme_wait_completion(nvme_t *nvme, uint16_t cid, nvme_queue_t *q)
         cid, q->head, q->tail, q->phase, e0->cid, dw3, p, sct, sc, dnr);
 }
 
-// --- IO AND IRQ ---
+// Creating queues
+
+static void nvme_create_admin_queue(nvme_t *nvme)
+{
+    size_t sq_size = NVME_ADMIN_QUEUE_DEPTH * sizeof(nvme_sq_entry_t);
+    size_t cq_size = NVME_ADMIN_QUEUE_DEPTH * sizeof(nvme_cq_entry_t);
+
+    nvme_queue_t *aq = vm_alloc(sizeof(nvme_queue_t));
+    nvme->admin_queue = aq;
+
+    aq->sq_dma = dma_alloc(sq_size);
+    aq->cq_dma = dma_alloc(cq_size);
+
+    aq->sq = (nvme_sq_entry_t *)aq->sq_dma.vaddr;
+    aq->cq = (volatile nvme_cq_entry_t *)aq->cq_dma.vaddr;
+
+    memset(aq->sq_dma.vaddr, 0, sq_size);
+    memset(aq->cq_dma.vaddr, 0, cq_size);
+
+    aq->qid = nvme->next_qid++;
+    aq->depth = NVME_ADMIN_QUEUE_DEPTH;
+    aq->head = 0;
+    aq->tail = 0;
+    aq->phase = 1;
+
+    aq->next_cid = 0;
+    memset(aq->cid_used, 0, sizeof(aq->cid_used));
+    aq->lock = SPINLOCK_INIT;
+
+    uint32_t aqa = 0;
+    aqa |= ((NVME_ADMIN_QUEUE_DEPTH - 1) & 0x0FFFu);         // ASQS bits 11:0
+    aqa |= (((NVME_ADMIN_QUEUE_DEPTH - 1) & 0x0FFFu) << 16); // ACQS bits 27:16
+    mmio_write32(&nvme->registers->AQA, aqa);
+
+    mmio_write64(&nvme->registers->ASQ, aq->sq_dma.paddr);
+    mmio_write64(&nvme->registers->ACQ, aq->cq_dma.paddr);
+}
 
 static void nvme_create_io_queue(nvme_t *nvme)
 {
