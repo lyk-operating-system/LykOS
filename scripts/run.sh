@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 ARCH="${1:-x86_64}" # Fallback to x86_64 if no arch is provided.
-LYKOS_ISO=$(chariot --option arch=${ARCH} path custom/image)/lykos.iso
+LYKOS_ISO=$(chariot --option arch=${ARCH} path -r custom/image)/lykos.iso
 OVMF="qemu/edk2-ovmf/ovmf-code-${ARCH}.fd"
 
 QEMU_FLAGS=(

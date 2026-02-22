@@ -1,11 +1,11 @@
-#include "proc/sched.h"
+#include "sys/sched.h"
 
 #include "arch/lcpu.h"
 #include "arch/timer.h"
 #include "log.h"
-#include "proc/smp.h"
-#include "proc/thread.h"
 #include "sync/spinlock.h"
+#include "sys/smp.h"
+#include "sys/thread.h"
 #include "utils/list.h"
 
 #define MLFQ_LEVELS 16

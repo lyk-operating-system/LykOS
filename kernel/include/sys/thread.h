@@ -1,7 +1,7 @@
 #pragma once
 
 #include "arch/thread.h"
-#include "proc.h"
+#include "sys/proc.h"
 #include "utils/list.h"
 #include <stdint.h>
 

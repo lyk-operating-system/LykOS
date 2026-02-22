@@ -1,8 +1,10 @@
+subdir('syscalls')
+
 c_files += files(
-    'debug.c',
-    'fileio.c',
-    'memory.c',
-    'misc.c',
+    'fd.c',
+    'init.c',
     'proc.c',
-    'syscall.c',
+    'sched.c',
+    'smp.c',
+    'thread.c',
 )

@@ -2,7 +2,7 @@
 
 #include "mm/vm.h"
 #include "utils/list.h"
-#include "proc/fd.h"
+#include "sys/fd.h"
 #include "sync/spinlock.h"
 
 typedef enum

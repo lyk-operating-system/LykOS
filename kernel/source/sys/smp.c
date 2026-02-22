@@ -1,13 +1,13 @@
-#include "proc/smp.h"
+#include "sys/smp.h"
 
 #include "arch/lcpu.h"
 #include "bootreq.h"
 #include "log.h"
 #include "mm/heap.h"
 #include "panic.h"
-#include "proc/proc.h"
-#include "proc/sched.h"
-#include "proc/thread.h"
+#include "sys/proc.h"
+#include "sys/sched.h"
+#include "sys/thread.h"
 
 list_t smp_cpus = LIST_INIT;
 static proc_t *idle_proc;
@@ -69,7 +69,7 @@ void smp_init()
             continue;
         }
 
-        //__atomic_store_n(&mp_info->goto_address, (limine_goto_address)&thread_idle_func, __ATOMIC_SEQ_CST);
+        __atomic_store_n(&mp_info->goto_address, (limine_goto_address)&thread_idle_func, __ATOMIC_SEQ_CST);
     }
 
     // Also initialize the bootstrap processor.

@@ -3,32 +3,23 @@
 #include <stddef.h>
 #include <stdatomic.h>
 
-struct ref;
+#define REF_INIT 1
 
-typedef struct ref
-{
-    atomic_int count;
-}
-ref_t;
+typedef atomic_int ref_t;
 
-static inline void ref_init(ref_t *r)
+static inline void ref_inc(ref_t *r)
 {
-    atomic_store(&r->count, 1);
+    atomic_fetch_add(r, 1);
 }
 
-static inline void ref_get(ref_t *r)
+static inline bool ref_dec(ref_t *r)
 {
-    atomic_fetch_add(&r->count, 1);
-}
-
-static inline bool ref_put(ref_t *r)
-{
-    if (atomic_fetch_sub(&r->count, 1) == 1)
+    if (atomic_fetch_sub(r, 1) == 1)
         return true;
     return false;
 }
 
 static inline int ref_read(ref_t *r)
 {
-    return atomic_load(&r->count);
+    return atomic_load(r);
 }

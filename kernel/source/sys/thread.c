@@ -1,6 +1,6 @@
 #include "arch/thread.h"
 #include "assert.h"
-#include "proc/thread.h"
+#include "sys/thread.h"
 
 #include "mm/heap.h"
 

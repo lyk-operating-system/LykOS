@@ -4,8 +4,8 @@
 #include <stdint.h>
 
 #include "mm/vm.h"
-#include "proc/proc.h"
-#include "proc/thread.h"
+#include "sys/proc.h"
+#include "sys/thread.h"
 
 // Helpers
 

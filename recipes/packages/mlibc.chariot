@@ -10,7 +10,7 @@ source/mlibc {
 
 package/mlibc_headers {
     dependencies: [
-        !source/mlibc
+        source/mlibc
         image/meson
         tool/pkgconf
     ]
