@@ -27,7 +27,14 @@ sys_ret_t syscall_mmap(uintptr_t addr, size_t length, int prot, int flags, int f
     vm_addrspace_t *as = proc->as;
 
     size_t value, err;
-    err = vm_map(as, addr, length, MM_PROT_WRITE | MM_PROT_USER, VM_MAP_ANON | VM_MAP_PRIVATE, NULL, 0, &value);
+    err = vm_map(
+        as,
+        addr, length,
+        VM_PROTECTION_FULL,
+        VM_MAP_ANON | VM_MAP_PRIVATE,
+        NULL, 0,
+        &value
+    );
 
     return (sys_ret_t) {
         value,

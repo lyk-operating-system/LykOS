@@ -2,7 +2,7 @@
 
 #include "mm/vm.h"
 #include "utils/list.h"
-#include "proc/fd.h"
+#include "sys/fd.h"
 #include "sync/spinlock.h"
 
 typedef enum
@@ -14,8 +14,9 @@ proc_status_t;
 
 typedef struct proc
 {
-    size_t pid;
-    const char *name;
+    uint32_t pid;
+    uint32_t ppid;
+    char *name;
     bool user;
 
     proc_status_t status;
@@ -23,7 +24,7 @@ typedef struct proc
     list_t threads;
 
     fd_table_t *fd_table;
-    const char *cwd;
+    char *cwd;
 
     list_node_t proc_list_node;
     spinlock_t slock;
@@ -31,7 +32,10 @@ typedef struct proc
 }
 proc_t;
 
-// Create and destroy
+// Create, destroy, and duplicate
 
-proc_t *proc_create(const char *name, bool is_kernel);
+proc_t *proc_create(const char *name, const char *cwd, bool is_kernel);
+
 void proc_destroy(proc_t *proc);
+
+proc_t *proc_fork(proc_t *proc);

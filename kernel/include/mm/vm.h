@@ -6,7 +6,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef struct vnode vnode_t;
+// Forward declarrations
+
+typedef struct vm_object vm_object_t;
+typedef struct vm_segment vm_segment_t;
+typedef struct vm_addrspace vm_addrspace_t;
+
+//
+
+#define VM_FAULT_WRITE 0
 
 #define VM_MAP_PRIVATE         0x01
 #define VM_MAP_SHARED          0x02
@@ -15,22 +23,21 @@ typedef struct vnode vnode_t;
 #define VM_MAP_FIXED_NOREPLACE 0x10
 #define VM_MAP_POPULATE        0x20
 
-typedef struct
+struct vm_segment
 {
     uintptr_t start;
     size_t length;
 
-    int prot;
+    vm_protection_t prot;
     int flags;
 
-    vnode_t *vn; // Vnode backing this segment.
-    uint64_t offset; // Offset into the vnode where this segment starts.
+    vm_object_t *object;
+    size_t offset;
 
     list_node_t list_node;
-}
-vm_segment_t;
+};
 
-typedef struct vm_addrspace
+struct vm_addrspace
 {
     list_t segments;
     arch_paging_map_t *page_map;
@@ -38,18 +45,21 @@ typedef struct vm_addrspace
     uintptr_t limit_high;
 
     spinlock_t slock;
-}
-vm_addrspace_t;
+};
 
 // Global data
 
 extern vm_addrspace_t *vm_kernel_as;
 
+// Page fault handler
+
+bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_protection_t type);
+
 // Mapping and unmapping
 
 int vm_map(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
-           int prot, int flags,
-           vnode_t *vn, uint64_t offset,
+           vm_protection_t prot, int flags,
+           vm_object_t *obj, size_t offset,
            uintptr_t *out);
 int vm_unmap(vm_addrspace_t *as, uintptr_t vaddr, size_t length);
 

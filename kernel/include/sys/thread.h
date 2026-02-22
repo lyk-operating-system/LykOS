@@ -1,7 +1,7 @@
 #pragma once
 
 #include "arch/thread.h"
-#include "proc.h"
+#include "sys/proc.h"
 #include "utils/list.h"
 #include <stdint.h>
 
@@ -24,7 +24,7 @@ struct thread
 {
     arch_thread_context_t context;
 
-    size_t tid;
+    uint32_t tid;
     proc_t *owner;
 
     size_t priority;
@@ -35,8 +35,12 @@ struct thread
 
     list_node_t proc_thread_list_node;
     list_node_t sched_thread_list_node;
+    spinlock_t slock;
     size_t ref_count;
 };
 
 thread_t *thread_create(proc_t *proc, uintptr_t entry);
+
 void thread_destroy(thread_t *thread);
+
+[[nodiscard]] thread_t *thread_duplicate(thread_t *thread);

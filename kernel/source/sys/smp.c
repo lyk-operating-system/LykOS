@@ -1,13 +1,13 @@
-#include "proc/smp.h"
+#include "sys/smp.h"
 
 #include "arch/lcpu.h"
 #include "bootreq.h"
 #include "log.h"
 #include "mm/heap.h"
 #include "panic.h"
-#include "proc/proc.h"
-#include "proc/sched.h"
-#include "proc/thread.h"
+#include "sys/proc.h"
+#include "sys/sched.h"
+#include "sys/thread.h"
 
 list_t smp_cpus = LIST_INIT;
 static proc_t *idle_proc;
@@ -34,7 +34,7 @@ void smp_init()
     if (bootreq_mp.response == NULL)
         panic("Invalid SMP info provided by the bootloader!");
 
-    idle_proc = proc_create("System Idle Process", false);
+    idle_proc = proc_create("System Idle Process", "/", false);
 
     for (size_t i = 0; i < bootreq_mp.response->cpu_count; i++)
     {

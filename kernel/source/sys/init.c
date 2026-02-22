@@ -1,12 +1,12 @@
-#include "proc/init.h"
+#include "sys/init.h"
 
 #include "arch/types.h"
 #include "log.h"
 #include "mm/heap.h"
 #include "mm/mm.h"
 #include "mm/vm.h"
-#include "proc/proc.h"
-#include "proc/thread.h"
+#include "sys/proc.h"
+#include "sys/thread.h"
 #include "uapi/errno.h"
 #include "utils/elf.h"
 #include "utils/math.h"
@@ -40,7 +40,7 @@ proc_t *init_load(vnode_t *file)
     ||  ehdr.e_type              != ET_EXEC)
         log(LOG_ERROR, "Incompatible ELF file `%s`!", file->name);
 
-    proc_t *proc = proc_create(file->name, true);
+    proc_t *proc = proc_create(file->name, "/", true);
 
     CLEANUP Elf64_Phdr *ph_table = heap_alloc(ehdr.e_phentsize * ehdr.e_phnum);
     if (vfs_read(file, ph_table, ehdr.e_phoff, ehdr.e_phentsize * ehdr.e_phnum, &count) != EOK
@@ -70,12 +70,10 @@ proc_t *init_load(vnode_t *file)
             uintptr_t out;
             int err = vm_map(
                 proc->as,
-                start,
-                diff,
-                MM_PROT_FULL,
+                start, diff,
+                VM_PROTECTION_FULL,
                 VM_MAP_ANON | VM_MAP_POPULATE | VM_MAP_FIXED | VM_MAP_PRIVATE,
-                NULL,
-                0,
+                NULL, 0,
                 &out
             );
             if (err != EOK || out != start)

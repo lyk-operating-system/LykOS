@@ -4,8 +4,8 @@
 #include <stdint.h>
 
 #include "mm/vm.h"
-#include "proc/proc.h"
-#include "proc/thread.h"
+#include "sys/proc.h"
+#include "sys/thread.h"
 
 // Helpers
 
@@ -44,4 +44,9 @@ sys_ret_t syscall_mmap(uintptr_t addr, size_t len, int prot, int flags, int fd, 
 // Process
 
 sys_ret_t syscall_exit(int code);
+sys_ret_t syscall_fork();
+sys_ret_t syscall_get_cwd();
+sys_ret_t syscall_get_pid();
+sys_ret_t syscall_get_ppid();
+sys_ret_t syscall_get_tid();
 sys_ret_t syscall_tcb_set(void *ptr);

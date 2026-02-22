@@ -84,12 +84,10 @@ int module_load(vnode_t *file, module_t **out)
             uintptr_t mem;
             vm_map(
                 vm_kernel_as,
-                0,
-                size,
-                MM_PROT_WRITE | MM_PROT_EXEC,
-                VM_MAP_ANON,
-                NULL,
-                0,
+                0, size,
+                VM_PROTECTION_FULL,
+                VM_MAP_ANON | VM_MAP_POPULATE,
+                NULL, 0,
                 &mem
             );
             if (vfs_read(file, (void *)mem, section->sh_offset, section->sh_size, &count) != EOK
@@ -106,12 +104,10 @@ int module_load(vnode_t *file, module_t **out)
             uintptr_t mem;
             vm_map(
                 vm_kernel_as,
-                0,
-                size,
-                MM_PROT_WRITE | MM_PROT_EXEC,
-                VM_MAP_ANON,
-                NULL,
-                0,
+                0, size,
+                VM_PROTECTION_FULL,
+                VM_MAP_ANON | VM_MAP_POPULATE,
+                NULL, 0,
                 &mem
             );
 
