@@ -9,7 +9,7 @@
 #include "hhdm.h"
 #include "mm/mm.h"
 #include "mm/pm.h"
-#include "proc/sched.h"
+#include "sys/sched.h"
 #include "utils/math.h"
 
 typedef struct
@@ -73,7 +73,7 @@ void arch_thread_context_init(arch_thread_context_t *context, vm_addrspace_t *as
         char *envp[] = { NULL };
 
         context->kernel_stack = pm_alloc(0)->addr + HHDM + ARCH_PAGE_GRAN;
-        context->rsp = (context->kernel_stack - sizeof(arch_thread_init_stack_kernel_t)) & (~0xF); // align as 16
+        context->rsp = (context->kernel_stack - sizeof(arch_thread_init_stack_user_t)) & (~0xF); // align as 16
 
         arch_thread_init_stack_user_t *init_stack = (arch_thread_init_stack_user_t *)context->rsp;
         *init_stack = (arch_thread_init_stack_user_t) {

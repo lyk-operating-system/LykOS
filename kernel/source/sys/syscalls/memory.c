@@ -3,9 +3,9 @@
 #include "fs/vfs.h"
 #include "log.h"
 #include "mm/mm.h"
-#include "proc/proc.h"
-#include "proc/sched.h"
-#include "proc/thread.h"
+#include "sys/proc.h"
+#include "sys/sched.h"
+#include "sys/thread.h"
 #include "uapi/errno.h"
 #include "utils/math.h"
 

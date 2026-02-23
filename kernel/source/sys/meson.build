@@ -1,3 +1,4 @@
+subdir('file')
 subdir('syscalls')
 
 c_files += files(

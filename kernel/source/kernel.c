@@ -7,9 +7,9 @@
 #include "mod/ksym.h"
 #include "mod/module.h"
 #include "panic.h"
-#include "proc/init.h"
-#include "proc/sched.h"
-#include "proc/smp.h"
+#include "sys/init.h"
+#include "sys/sched.h"
+#include "sys/smp.h"
 #include "uapi/errno.h"
 #include "utils/string.h"
 #include <stddef.h>

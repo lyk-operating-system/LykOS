@@ -31,7 +31,7 @@ vm_object_t *vm_object_create(vm_object_type_t type, size_t size)
     obj->ops = ops_table[type];
     memset(&obj->source, 0, sizeof(obj->source));
     obj->slock = SPINLOCK_INIT;
-    ref_init(&obj->refcount);
+    obj->refcount = REF_INIT;
 
     return obj;
 }
@@ -46,12 +46,12 @@ static void vm_object_destroy(vm_object_t *obj)
 
 void vm_object_ref(vm_object_t *obj)
 {
-    ref_get(&obj->refcount);
+    ref_inc(&obj->refcount);
 }
 
 void vm_object_unref(vm_object_t *obj)
 {
-    if (ref_put(&obj->refcount))
+    if (ref_dec(&obj->refcount))
         vm_object_destroy(obj);
 }
 

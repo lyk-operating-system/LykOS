@@ -2,7 +2,7 @@
 
 #include "log.h"
 #include "mm/mm.h"
-#include "proc/sched.h"
+#include "sys/sched.h"
 
 #include <stdint.h>
 

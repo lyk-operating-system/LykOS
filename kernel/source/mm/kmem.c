@@ -3,9 +3,9 @@
 #include "arch/types.h"
 #include "hhdm.h"
 #include "mm/pm.h"
-#include "proc/smp.h"
-#include "proc/thread.h"
-#include "proc/sched.h"
+#include "sys/smp.h"
+#include "sys/thread.h"
+#include "sys/sched.h"
 #include "utils/list.h"
 
 static kmem_slab_t *cache_make_slab(kmem_cache_t *cache)

@@ -1,6 +1,6 @@
 #include "syscall.h"
 
-#include "proc/sched.h"
+#include "sys/sched.h"
 
 const void* syscall_table[] = {
     (void *)syscall_debug_log,

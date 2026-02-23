@@ -59,7 +59,7 @@ static void pci_create_device(pci_header_common_t *pci_hdr)
         .bus = &pci_bus,
         .bus_data = pci_hdr,
     };
-    ref_init(&dev->refcount);
+    dev->refcount = REF_INIT;
     list_append(&pci_bus.devices, &dev->list_node);
 
     log(LOG_DEBUG, "Registered device: %s", name);

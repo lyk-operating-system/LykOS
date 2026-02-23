@@ -1,11 +1,11 @@
-#include "proc/smp.h"
-#include "proc/thread.h"
+#include "sys/smp.h"
+#include "sys/thread.h"
 #include "sys/syscall.h"
 
 #include "arch/misc.h"
 #include "arch/timer.h"
 #include "log.h"
-#include "proc/sched.h"
+#include "sys/sched.h"
 #include "uapi/errno.h"
 #include <stdint.h>
 

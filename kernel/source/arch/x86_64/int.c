@@ -4,8 +4,8 @@
 #include "arch/x86_64/devices/lapic.h"
 #include "mm/heap.h"
 #include "panic.h"
-#include "proc/sched.h"
 #include "sync/spinlock.h"
+#include "sys/sched.h"
 #include <stddef.h>
 
 /*

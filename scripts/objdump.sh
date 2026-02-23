@@ -2,7 +2,7 @@
 
 ADDRESS=0x$1
 
-objdump .chariot-cache/recipes/custom/kernel/opt/arch/x86_64/install/usr/bin/kernel-x86_64.elf \
+objdump $(chariot path -r package/apps)/usr/bin/init \
     -d -wrC \
     --visualize-jumps=color \
     --disassembler-color=on \

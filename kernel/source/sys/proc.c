@@ -1,11 +1,11 @@
-#include "proc/proc.h"
+#include "sys/proc.h"
 
 #include "assert.h"
 #include "log.h"
 #include "mm/heap.h"
 #include "mm/vm.h"
-#include "proc/fd.h"
-#include "proc/thread.h"
+#include "sys/fd.h"
+#include "sys/thread.h"
 #include "utils/list.h"
 #include "utils/string.h"
 

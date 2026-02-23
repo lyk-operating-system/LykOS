@@ -25,7 +25,7 @@ drive_t *drive_create(drive_type_t type)
     d->type = type;
     d->device.class = DEVICE_STORAGE;
 
-    ref_init(&d->device.refcount);
+    d->device.refcount = REF_INIT;
     d->device.slock = SPINLOCK_INIT;
     d->mounted = false;
 
@@ -54,7 +54,7 @@ void drive_mount(drive_t *d)
         list_append(&drive_list, &d->node);
         d->mounted = true;
 
-        ref_get(&d->device.refcount);
+        ref_inc(&d->device.refcount);
         do_bus_register = (d->device.bus != NULL);
     }
     else if (drive_list.length >= MAX_DRIVES)
@@ -81,7 +81,7 @@ void drive_unmount(drive_t *d)
         list_remove(&drive_list, &d->node);
         d->mounted = false;
 
-        ref_put(&d->device.refcount);
+        ref_dec(&d->device.refcount);
         do_bus_remove = (d->device.bus != NULL);
     }
 
@@ -106,7 +106,7 @@ drive_t *drive_get(int id)
         drive_t *d = LIST_GET_CONTAINER(n, drive_t, node);
         if (d->id == id)
         {
-            ref_get(&d->device.refcount);
+            ref_inc(&d->device.refcount);
             gd = d;
             break;
         }

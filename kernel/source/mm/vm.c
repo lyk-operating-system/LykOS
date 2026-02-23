@@ -109,6 +109,8 @@ static vm_segment_t *find_seg(vm_addrspace_t *as, uintptr_t addr)
 
 bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_protection_t type)
 {
+    log(LOG_WARN, "User pf");
+
     vm_segment_t *seg = check_collision(as, virt, 1);
     if (!seg)
         return false;
@@ -119,6 +121,8 @@ bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_protection_t type)
         (type.read  && !(seg->prot.read)))
         return false;
 
+    log(LOG_WARN, "A");
+
     uintptr_t vaddr_aligned = FLOOR(virt, ARCH_PAGE_GRAN);
     size_t offset = ((vaddr_aligned - seg->start) / ARCH_PAGE_GRAN) + seg->offset;
 
@@ -126,6 +130,8 @@ bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_protection_t type)
     page_t *page = NULL;
     if (!vm_object_get_page(obj, offset, &page))
         return false;
+
+    log(LOG_WARN, "B");
 
     /*
      * COW logic
@@ -144,7 +150,11 @@ bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_protection_t type)
             page_t *new_page = NULL;
 
             if (!obj->ops->copy_page(obj, offset, page, &new_page))
+            {
                 return false;
+                log(LOG_WARN, "C");
+            }
+
 
             page = new_page;
         }
@@ -224,7 +234,7 @@ int vm_map(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
         }
     }
     else
-        ref_get(&obj->refcount);
+        ref_inc(&obj->refcount);
 
     // Initialize and insert the segment.
     vm_segment_t *seg = heap_alloc(sizeof(vm_segment_t));
@@ -307,8 +317,6 @@ void *vm_alloc(size_t size)
 {
     size = CEIL(size + sizeof(vm_alloc_hdr_t), ARCH_PAGE_GRAN);
 
-    spinlock_acquire(&vm_kernel_as->slock);
-
     uintptr_t out = 0;
     vm_map(
         vm_kernel_as,
@@ -317,8 +325,6 @@ void *vm_alloc(size_t size)
         NULL, 0,
         &out
     );
-
-    spinlock_release(&vm_kernel_as->slock);
 
     return out ? (void *)out : NULL;
 }
