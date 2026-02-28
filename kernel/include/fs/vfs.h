@@ -1,10 +1,9 @@
 #pragma once
 
-#include "mm/pm.h"
 #include "sync/spinlock.h"
 #include "utils/list.h"
+#include "utils/ref.h"
 #include "utils/xarray.h"
-#include <stdatomic.h>
 #include <stdint.h>
 
 typedef struct vm_addrspace vm_addrspace_t;
@@ -76,7 +75,7 @@ struct vnode
     void *inode;
 
     // Misc
-    atomic_uint refcount;
+    ref_t refcount;
     spinlock_t slock;
 };
 
@@ -86,38 +85,6 @@ struct vfs_dirent
     vnode_type_t type;
     // TODO: Add other fields
 };
-
-/**
- * @brief Increment vnode reference count.
- *
- * Acquires an additional reference to the vnode.
- * This does not imply ownership transfer; the caller must already
- * hold a valid reference.
- *
- * @param vn Pointer to the vnode.
- */
-static inline void vnode_ref(vnode_t *vn)
-{
-    atomic_fetch_add_explicit(&vn->refcount, 1, memory_order_relaxed);
-}
-
-/**
- * @brief Decrement vnode reference count and deallocate if it reaches zero.
- *
- * Releases a reference to the vnode. When the reference count drops to zero,
- * the vnode deallocates itself.
- *
- * @param vn Pointer to the vnode.
- */
-static inline bool vnode_unref(vnode_t *vn)
-{
-    if (atomic_fetch_sub_explicit(&vn->refcount, 1, memory_order_acq_rel) == 1)
-    {
-        // TODO: run vnode destructor
-        return true;
-    }
-    return false;
-}
 
 struct vnode_ops
 {
@@ -138,6 +105,9 @@ struct vnode_ops
     int (*mmap) (vnode_t *vn, vm_addrspace_t *as, uintptr_t vaddr, size_t length,
                  int prot, int flags, uint64_t offset);
 };
+
+void vnode_hold(vnode_t *vn);
+void vnode_drop(vnode_t *vn);
 
 /*
  * Veneer layer.

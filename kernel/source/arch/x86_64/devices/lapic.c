@@ -110,5 +110,5 @@ void x86_64_lapic_init_cpu()
         }
     }
 
-    log(LOG_INFO, "LAPIC initialized.");
+    log(LOG_DEBUG, "LAPIC initialized.");
 }

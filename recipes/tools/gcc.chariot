@@ -25,12 +25,15 @@ source/gcc_host {
 tool/gcc_bootstrap {
     dependencies: [
         %source/gcc_host
+        image/build-essential image/ccache
         tool/autoconf_archive *tool/binutils tool/pkgconf
         collection/autotools_2.69
-        !package/mlibc_headers image/build-essential
+        !package/mlibc_headers
     ]
     configure: <sh>
-        CFLAGS="-O2" CXXFLAGS="-O2" $SOURCES_DIR/gcc_host/configure \
+        CC="ccache gcc" CXX="ccache g++" \
+        CFLAGS="-O2" CXXFLAGS="-O2" \
+        $SOURCES_DIR/gcc_host/configure \
             --prefix=$PREFIX \
             --target=x86_64-lykos \
             --with-sysroot=$SYSROOT_DIR \
@@ -56,13 +59,15 @@ tool/gcc_bootstrap {
 tool/gcc {
     dependencies: [
         %source/gcc_host
-        image/build-essential
+        image/build-essential image/ccache
         tool/autoconf_archive *tool/binutils tool/pkgconf
         collection/autotools_2.69
         *package/mlibc_headers *package/mlibc
     ]
     configure: <sh>
-        CFLAGS="-O2" CXXFLAGS="-O2" $SOURCES_DIR/gcc_host/configure \
+        CC="ccache gcc" CXX="ccache g++" \
+        CFLAGS="-O2" CXXFLAGS="-O2" \
+        $SOURCES_DIR/gcc_host/configure \
             --prefix=$PREFIX \
             --target=x86_64-lykos \
             --with-sysroot=$SYSROOT_DIR \

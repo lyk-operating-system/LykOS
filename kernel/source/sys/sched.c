@@ -1,11 +1,12 @@
-#include "proc/sched.h"
+#include "sys/sched.h"
 
+#include "assert.h"
 #include "arch/lcpu.h"
 #include "arch/timer.h"
 #include "log.h"
-#include "proc/smp.h"
-#include "proc/thread.h"
 #include "sync/spinlock.h"
+#include "sys/smp.h"
+#include "sys/thread.h"
 #include "utils/list.h"
 
 #define MLFQ_LEVELS 16
@@ -35,8 +36,14 @@ static thread_t *pick_next_thread()
 // This function will be called from the assembly function `__thread_context_switch`.
 void sched_drop(thread_t *t)
 {
+    ASSERT(t);
+    ASSERT(t->assigned_cpu);
+    ASSERT(t->assigned_cpu->idle_thread);
+
     if (t == t->assigned_cpu->idle_thread)
         return;
+
+    t->assigned_cpu = NULL;
 
     spinlock_acquire(&slock);
     list_append(&ready_queues[t->priority], &t->sched_thread_list_node);
@@ -44,6 +51,16 @@ void sched_drop(thread_t *t)
 }
 
 // Public API
+
+thread_t *sched_get_curr_thread()
+{
+    return (thread_t *)arch_lcpu_thread_reg_read();
+}
+
+uint32_t sched_get_curr_cpuid()
+{
+    return sched_get_curr_thread()->assigned_cpu->id;
+}
 
 void sched_enqueue(thread_t *t)
 {
@@ -55,11 +72,6 @@ void sched_enqueue(thread_t *t)
     spinlock_release(&slock);
 }
 
-thread_t *sched_get_curr_thread()
-{
-    return (thread_t *)arch_lcpu_thread_reg_read();
-}
-
 void sched_preemt()
 {
     spinlock_acquire(&slock);
@@ -69,6 +81,7 @@ void sched_preemt()
     if (old->priority < MLFQ_LEVELS - 1)
         old->priority++;
     thread_t *new = pick_next_thread();
+    new->assigned_cpu = old->assigned_cpu;
     spinlock_release(&slock);
 
     vm_addrspace_load(new->owner->as);
@@ -82,8 +95,10 @@ void sched_yield(thread_status_t status)
     old->last_ran = arch_timer_get_uptime_ns();
     old->status = status;
     thread_t *new = pick_next_thread();
+    new->assigned_cpu = old->assigned_cpu;
     spinlock_release(&slock);
 
     vm_addrspace_load(new->owner->as);
+
     arch_thread_context_switch(&old->context, &new->context);
 }

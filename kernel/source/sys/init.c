@@ -1,17 +1,68 @@
-#include "proc/init.h"
+#include "sys/init.h"
 
 #include "arch/types.h"
 #include "log.h"
 #include "mm/heap.h"
 #include "mm/mm.h"
 #include "mm/vm.h"
-#include "proc/proc.h"
-#include "proc/thread.h"
+#include "sys/proc.h"
+#include "sys/thread.h"
 #include "uapi/errno.h"
 #include "utils/elf.h"
 #include "utils/math.h"
 #include <stddef.h>
 #include <stdint.h>
+
+int elf_load_ph_load(vm_addrspace_t *as, vnode_t *file, Elf64_Phdr *ph)
+{
+    uintptr_t start = FLOOR(ph->p_vaddr, ARCH_PAGE_GRAN);
+    uintptr_t end   = CEIL(ph->p_vaddr + ph->p_memsz, ARCH_PAGE_GRAN);
+    uint64_t  diff  = end - start;
+
+    uintptr_t out;
+    int err = vm_map(
+        as,
+        start, diff,
+        VM_PROTECTION_FULL,
+        VM_MAP_ANON | VM_MAP_POPULATE | VM_MAP_FIXED | VM_MAP_PRIVATE,
+        NULL, 0,
+        &out
+    );
+    if (err != EOK || out != start)
+    {
+        log(LOG_ERROR, "Could not map the program headers!");
+        return ENOEXEC;
+    }
+
+    if (ph->p_filesz == 0)
+        return EOK;
+
+    CLEANUP uint8_t *buf = heap_alloc(1024);
+    if (!buf)
+    {
+        log(LOG_ERROR, "Could not allocate memory for the file IO buffer.");
+        return ENOMEM;
+    }
+
+    size_t read_bytes = 0;
+    while (read_bytes < ph->p_filesz)
+    {
+        size_t to_copy = MIN(ph->p_filesz - read_bytes, 1024);
+
+        uint64_t count;
+        if (vfs_read(file, buf, ph->p_offset + read_bytes, to_copy, &count) != EOK
+        ||  count != to_copy)
+        {
+            log(LOG_ERROR, "Could not map the program headers!");
+            return ENOEXEC;
+        }
+        vm_copy_to_user(as, ph->p_vaddr + read_bytes, buf, to_copy);
+
+        read_bytes += to_copy;
+    }
+
+    return EOK;
+}
 
 proc_t *init_load(vnode_t *file)
 {
@@ -38,9 +89,12 @@ proc_t *init_load(vnode_t *file)
     #endif
     ||  ehdr.e_ident[EI_VERSION] != EV_CURRENT
     ||  ehdr.e_type              != ET_EXEC)
+    {
         log(LOG_ERROR, "Incompatible ELF file `%s`!", file->name);
+        return NULL;
+    }
 
-    proc_t *proc = proc_create(file->name, true);
+    proc_t *proc = proc_create(file->name, "/", true);
 
     CLEANUP Elf64_Phdr *ph_table = heap_alloc(ehdr.e_phentsize * ehdr.e_phnum);
     if (vfs_read(file, ph_table, ehdr.e_phoff, ehdr.e_phentsize * ehdr.e_phnum, &count) != EOK
@@ -54,57 +108,15 @@ proc_t *init_load(vnode_t *file)
     {
         Elf64_Phdr *ph = &ph_table[i];
 
-        CLEANUP uint8_t *buf = heap_alloc(1024);
-        if (!buf)
-        {
-            log(LOG_ERROR, "Could not allocate a page for the file IO buffer.");
-            return NULL;
-        }
-
         if (ph->p_type == PT_LOAD && ph->p_memsz != 0)
         {
-            uintptr_t start = FLOOR(ph->p_vaddr, ARCH_PAGE_GRAN);
-            uintptr_t end   = CEIL(ph->p_vaddr + ph->p_memsz, ARCH_PAGE_GRAN);
-            uint64_t  diff  = end - start;
-
-            uintptr_t out;
-            int err = vm_map(
-                proc->as,
-                start,
-                diff,
-                MM_PROT_FULL,
-                VM_MAP_ANON | VM_MAP_POPULATE | VM_MAP_FIXED | VM_MAP_PRIVATE,
-                NULL,
-                0,
-                &out
-            );
-            if (err != EOK || out != start)
-            {
-                log(LOG_ERROR, "Could not map the program headers!");
+            int err = elf_load_ph_load(proc->as, file, ph);
+            if (err != EOK)
                 return NULL;
-            }
-
-            if (ph->p_filesz == 0)
-                continue;
-
-            size_t read_bytes = 0;
-            while (read_bytes < ph->p_filesz)
-            {
-                size_t to_copy = MIN(ph->p_filesz - read_bytes, ARCH_PAGE_GRAN);
-
-                if (vfs_read(file, buf, ph->p_offset + read_bytes, to_copy, &count) != EOK
-                ||  count != to_copy)
-                {
-                    log(LOG_ERROR, "Could not map the program headers!");
-                    return NULL;
-                }
-                vm_copy_to_user(proc->as, ph->p_vaddr + read_bytes, buf, to_copy);
-
-                read_bytes += to_copy;
-            }
         }
     }
 
     thread_create(proc, ehdr.e_entry);
+
     return proc;
 }

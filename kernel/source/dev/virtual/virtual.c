@@ -18,13 +18,13 @@ static bool virtual_bus_device_register(struct device *dev)
 
     dev->parent = NULL;
     dev->driver = NULL;
-    ref_get(&virtual_bus.refcount);
+    ref_inc(&virtual_bus.refcount);
     dev->bus = &virtual_bus;
     dev->list_node = LIST_NODE_INIT;
-    ref_init(&dev->refcount);
+    dev->refcount = REF_INIT;
     dev->slock = SPINLOCK_INIT;
 
-    ref_get(&dev->refcount);
+    ref_inc(&dev->refcount);
     list_append(&virtual_bus.devices, &dev->list_node);
 
     spinlock_release(&virtual_bus.slock);

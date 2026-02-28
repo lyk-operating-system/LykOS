@@ -1,3 +1,5 @@
+subdir('vm')
+
 c_files += files(
     'heap.c',
     'kmem.c',

@@ -14,6 +14,19 @@
 #include "utils/math.h"
 #include "utils/string.h"
 
+void vnode_hold(vnode_t *vn)
+{
+    ref_inc(&vn->refcount);
+}
+
+void vnode_drop(vnode_t *vn)
+{
+    if (ref_dec(&vn->refcount))
+    {
+        // TODO: run vnode destructor
+    }
+}
+
 /*
  * Veneer layer.
  */
@@ -56,7 +69,7 @@ static int get_page(vnode_t *vn, uint64_t pg_idx, bool read, page_t **out)
 int vfs_read(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count,
              uint64_t *out_bytes_read)
 {
-    ASSERT (vn && buffer && out_bytes_read);
+    ASSERT(vn && buffer && out_bytes_read);
 
     if (!vn->ops || !vn->ops->read)
         return ENOTSUP;
@@ -91,7 +104,7 @@ int vfs_read(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count,
 int vfs_write(vnode_t *vn, void *buffer, uint64_t offset, uint64_t count,
               uint64_t *out_bytes_written)
 {
-    ASSERT (vn && buffer && out_bytes_written);
+    ASSERT(vn && buffer && out_bytes_written);
 
     if (!vn->ops || !vn->ops->write)
         return ENOTSUP;
@@ -200,7 +213,7 @@ int vfs_remove(const char *path)
 
 int vfs_ioctl(vnode_t *vn, uint64_t cmd, void *args)
 {
-    ASSERT (vn); // args can be NULL
+    ASSERT(vn); // args can be NULL
 
     if (!vn->ops || !vn->ops->ioctl)
         return ENOTSUP;
@@ -211,7 +224,7 @@ int vfs_ioctl(vnode_t *vn, uint64_t cmd, void *args)
 int vfs_mmap(vnode_t *vn, vm_addrspace_t *as, uintptr_t vaddr, size_t length,
              int prot, int flags, uint64_t offset)
 {
-    ASSERT (vn && as);
+    ASSERT(vn && as);
 
     if (!vn->ops || !vn->ops->mmap)
         return ENOTSUP;

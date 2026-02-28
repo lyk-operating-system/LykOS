@@ -9,7 +9,7 @@
 
 #define PM_MAX_PAGE_ORDER 10
 
-typedef struct
+typedef struct page
 {
     uintptr_t addr;
     uint8_t order;
