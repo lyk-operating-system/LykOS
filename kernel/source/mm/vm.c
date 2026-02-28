@@ -109,7 +109,7 @@ static vm_segment_t *find_seg(vm_addrspace_t *as, uintptr_t addr)
 
 bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_protection_t type)
 {
-    log(LOG_WARN, "User pf");
+    panic("User PF");
 
     vm_segment_t *seg = check_collision(as, virt, 1);
     if (!seg)
@@ -121,8 +121,6 @@ bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_protection_t type)
         (type.read  && !(seg->prot.read)))
         return false;
 
-    log(LOG_WARN, "A");
-
     uintptr_t vaddr_aligned = FLOOR(virt, ARCH_PAGE_GRAN);
     size_t offset = ((vaddr_aligned - seg->start) / ARCH_PAGE_GRAN) + seg->offset;
 
@@ -130,8 +128,6 @@ bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_protection_t type)
     page_t *page = NULL;
     if (!vm_object_get_page(obj, offset, &page))
         return false;
-
-    log(LOG_WARN, "B");
 
     /*
      * COW logic
@@ -150,11 +146,7 @@ bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_protection_t type)
             page_t *new_page = NULL;
 
             if (!obj->ops->copy_page(obj, offset, page, &new_page))
-            {
                 return false;
-                log(LOG_WARN, "C");
-            }
-
 
             page = new_page;
         }
@@ -307,15 +299,9 @@ int vm_unmap(vm_addrspace_t *as, uintptr_t vaddr, size_t length)
  * Memory allocation
  */
 
-typedef struct
-{
-    size_t obj_size;
-}
-vm_alloc_hdr_t;
-
 void *vm_alloc(size_t size)
 {
-    size = CEIL(size + sizeof(vm_alloc_hdr_t), ARCH_PAGE_GRAN);
+    size = CEIL(size, ARCH_PAGE_GRAN);
 
     uintptr_t out = 0;
     vm_map(
@@ -357,10 +343,11 @@ size_t vm_copy_to_user(vm_addrspace_t *dest_as, uintptr_t dest, const void *src,
         }
 
         size_t len = MIN(count - i, ARCH_PAGE_GRAN - offset);
-        memcpy((void*)(phys + HHDM), src, len);
+        memcpy((void *)(phys + HHDM), src, len);
         i += len;
         src = (void *)((uintptr_t)src + len);
     }
+
     return i;
 }
 
@@ -382,6 +369,7 @@ size_t vm_copy_from_user(vm_addrspace_t *src_as, void *dest, uintptr_t src, size
         i += len;
         dest = (void *)((uintptr_t)dest + len);
     }
+
     return i;
 }
 
@@ -402,6 +390,7 @@ size_t vm_zero_out_user(vm_addrspace_t *dest_as, uintptr_t dest, size_t count)
         memset((void*)(phys + HHDM), 0, len);
         i += len;
     }
+
     return i;
 }
 
@@ -409,8 +398,8 @@ size_t vm_zero_out_user(vm_addrspace_t *dest_as, uintptr_t dest, size_t count)
 
 vm_addrspace_t *vm_addrspace_create()
 {
-    vm_addrspace_t *map = heap_alloc(sizeof(vm_addrspace_t));
-    *map = (vm_addrspace_t) {
+    vm_addrspace_t *as = heap_alloc(sizeof(vm_addrspace_t));
+    *as = (vm_addrspace_t) {
         .segments = LIST_INIT,
         .page_map = arch_paging_map_create(),
         .limit_low = 0,
@@ -418,7 +407,7 @@ vm_addrspace_t *vm_addrspace_create()
         .slock = SPINLOCK_INIT
     };
 
-    return map;
+    return as;
 }
 
 void vm_addrspace_destroy(vm_addrspace_t *as)

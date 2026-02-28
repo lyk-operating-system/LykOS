@@ -1,5 +1,6 @@
 #include "sys/sched.h"
 
+#include "assert.h"
 #include "arch/lcpu.h"
 #include "arch/timer.h"
 #include "log.h"
@@ -35,8 +36,14 @@ static thread_t *pick_next_thread()
 // This function will be called from the assembly function `__thread_context_switch`.
 void sched_drop(thread_t *t)
 {
+    ASSERT(t);
+    ASSERT(t->assigned_cpu);
+    ASSERT(t->assigned_cpu->idle_thread);
+
     if (t == t->assigned_cpu->idle_thread)
         return;
+
+    t->assigned_cpu = NULL;
 
     spinlock_acquire(&slock);
     list_append(&ready_queues[t->priority], &t->sched_thread_list_node);
@@ -75,7 +82,6 @@ void sched_preemt()
         old->priority++;
     thread_t *new = pick_next_thread();
     new->assigned_cpu = old->assigned_cpu;
-    old->assigned_cpu = NULL;
     spinlock_release(&slock);
 
     vm_addrspace_load(new->owner->as);
@@ -90,9 +96,9 @@ void sched_yield(thread_status_t status)
     old->status = status;
     thread_t *new = pick_next_thread();
     new->assigned_cpu = old->assigned_cpu;
-    old->assigned_cpu = NULL;
     spinlock_release(&slock);
 
     vm_addrspace_load(new->owner->as);
+
     arch_thread_context_switch(&old->context, &new->context);
 }

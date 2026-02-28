@@ -31,7 +31,7 @@ sys_ret_t syscall_mmap(uintptr_t addr, size_t length, int prot, int flags, int f
         as,
         addr, length,
         VM_PROTECTION_FULL,
-        VM_MAP_ANON | VM_MAP_PRIVATE,
+        VM_MAP_ANON | VM_MAP_PRIVATE | VM_MAP_POPULATE,
         NULL, 0,
         &value
     );

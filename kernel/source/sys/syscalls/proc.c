@@ -13,6 +13,9 @@ sys_ret_t syscall_exit(int code)
 {
     log(LOG_DEBUG, "Process exited with code: %i.", code);
 
+    while (true) // TEMP
+        ;
+
     sched_yield(THREAD_STATE_TERMINATED);
 
     unreachable();
