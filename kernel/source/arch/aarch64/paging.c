@@ -71,9 +71,10 @@ int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t padd
     ASSERT(paddr % size == 0);
 
     pte_t _prot = 0;
-    if (!prot.read) log(LOG_ERROR, "No-read mapping is not supported on x86_64!");
-    if (!prot.write) _prot |= PTE_READONLY;
-    if (!prot.exec) _prot |= PTE_XN;
+    if (!(prot & VM_PROTECTION_READ)) log(LOG_ERROR, "No-read mapping is not supported on aarch64!");
+    if (prot & VM_PROTECTION_WRITE) _prot |= PTE_READONLY;
+    if (!(prot & VM_PROTECTION_EXECUTE)) _prot |= PTE_XN;
+
     const int attr_idx[] = {
         [VM_CACHE_STANDARD]      = 0,
         [VM_CACHE_WRITE_THROUGH] = 1,

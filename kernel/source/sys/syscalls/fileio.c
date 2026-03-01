@@ -94,6 +94,9 @@ sys_ret_t syscall_read(int fd, void *buf, size_t count)
 
 sys_ret_t syscall_seek(int fd, uint64_t offset, int whence)
 {
+    if (fd == 1 || fd == 2)
+        return (sys_ret_t) {0, EOK};
+
     file_t *file = fd_get(sys_curr_proc()->fd_table, fd);
     if (!file)
         return (sys_ret_t) {0, EBADF};
@@ -108,15 +111,21 @@ sys_ret_t syscall_seek(int fd, uint64_t offset, int whence)
     if (err != EOK)
     {
         fd_put(file);
-        return (sys_ret_t){0, err};
+        return (sys_ret_t) {0, err};
     }
 
     fd_put(file);
-    return (sys_ret_t){file->offset, EOK};
+    return (sys_ret_t) {file->offset, EOK};
 }
 
 sys_ret_t syscall_write(int fd, void *buf, size_t count)
 {
+    if (fd == 1 || fd == 2)
+    {
+        log(LOG_INFO, "%s", buf);
+        return (sys_ret_t) {count, EOK};
+    }
+
     file_t *file = fd_get(sys_curr_proc()->fd_table, fd);
     if (!file)
         return (sys_ret_t) {0, EBADF};

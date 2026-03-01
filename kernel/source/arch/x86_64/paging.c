@@ -72,9 +72,9 @@ int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t padd
     ASSERT(paddr % size == 0);
 
     pte_t flags = 0;
-    if (!prot.read) log(LOG_ERROR, "No-read mapping is not supported on x86_64!");
-    if (prot.write) flags |= PTE_WRITE;
-    if (!prot.exec) flags |= PTE_NX;
+    if (!(prot & VM_PROTECTION_READ)) log(LOG_ERROR, "No-read mapping is not supported on x86_64!");
+    if (prot & VM_PROTECTION_WRITE) flags |= PTE_WRITE;
+    if (!(prot & VM_PROTECTION_EXECUTE)) flags |= PTE_NX;
     const int attr_idx[] = {
         [VM_CACHE_STANDARD]      = 0,
         [VM_CACHE_WRITE_THROUGH] = 1,
@@ -214,9 +214,9 @@ int arch_paging_prot_page(arch_paging_map_t *map, uintptr_t vaddr, size_t size, 
 
     pte_t entry = table[leaf_idx];
     entry &= ~(PTE_WRITE | PTE_NX | PTE_USER);
-    if (!prot.read) log(LOG_ERROR, "No-read mapping is not supported on x86_64!");
-    if (prot.write) entry |= PTE_WRITE;
-    if (!prot.exec) entry |= PTE_NX;
+    if (!(prot & VM_PROTECTION_READ)) log(LOG_ERROR, "No-read mapping is not supported on x86_64!");
+    if (prot & VM_PROTECTION_WRITE) entry |= PTE_WRITE;
+    if (!(prot & VM_PROTECTION_EXECUTE)) entry |= PTE_NX;
     if (is_user)    entry |= PTE_USER;
 
     table[leaf_idx] = entry;

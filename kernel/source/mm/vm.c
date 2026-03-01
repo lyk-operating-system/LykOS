@@ -109,16 +109,12 @@ static vm_segment_t *find_seg(vm_addrspace_t *as, uintptr_t addr)
 
 bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_protection_t type)
 {
-    panic("User PF");
-
     vm_segment_t *seg = check_collision(as, virt, 1);
     if (!seg)
         return false;
 
     // Protection check
-    if ((type.write && !(seg->prot.write)) ||
-        (type.exec  && !(seg->prot.exec))  ||
-        (type.read  && !(seg->prot.read)))
+    if ((type & seg->prot) != type)
         return false;
 
     uintptr_t vaddr_aligned = FLOOR(virt, ARCH_PAGE_GRAN);
@@ -137,7 +133,7 @@ bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_protection_t type)
      *  - mapping is private
      *  - page not already present in top-level object
      */
-    if (type.write /*&& (seg->flags & VM_MAP_PRIVATE)*/)
+    if (type & VM_PROTECTION_WRITE /*&& (seg->flags & VM_MAP_PRIVATE)*/)
     {
         page_t *existing = vm_object_lookup_page(obj, offset);
 
@@ -307,7 +303,7 @@ void *vm_alloc(size_t size)
     vm_map(
         vm_kernel_as,
         0, size,
-        (vm_protection_t) {.write = true, .read = true}, VM_MAP_ANON | VM_MAP_POPULATE,
+        VM_PROTECTION_READ | VM_PROTECTION_WRITE, VM_MAP_ANON | VM_MAP_POPULATE,
         NULL, 0,
         &out
     );
@@ -481,7 +477,7 @@ vm_addrspace_t *vm_addrspace_clone(vm_addrspace_t *parent_as)
             arch_paging_prot_page(
                 parent_as->page_map,
                 curr_addr, ARCH_PAGE_GRAN,
-                (vm_protection_t) {.write = false, .read = true, .exec = true}
+                VM_PROTECTION_READ | VM_PROTECTION_WRITE
             );
         }
     }
