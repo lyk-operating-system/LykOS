@@ -25,7 +25,7 @@ sys_ret_t syscall_fork()
 {
     log(LOG_WARN, "p=%u", sys_curr_proc()->pid);
 
-    proc_t *child_proc = proc_fork(sys_curr_proc());
+    proc_t *child_proc = proc_fork(sys_curr_proc(), sys_curr_thread());
 
     log(LOG_WARN, "Process forked!");
     log(LOG_WARN, "p=%u c=%u", sys_curr_proc()->pid, child_proc->pid);
