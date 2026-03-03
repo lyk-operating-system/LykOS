@@ -30,6 +30,14 @@ typedef enum
 }
 vm_cache_t;
 
+typedef enum
+{
+    VM_FAULT_READ,
+    VM_FAULT_WRITE,
+    VM_FAULT_INSTRUCTION_FETCH
+}
+vm_fault_type_t;
+
 void *memcpy(void *restrict dest, const void *restrict src, size_t n);
 
 void *memmove(void *dest, const void *src, size_t n);

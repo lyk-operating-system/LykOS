@@ -179,12 +179,12 @@ void arch_int_handler(cpu_state_t *cpu_state)
             vm_protection_t fault_type = 0;
 
             if (cpu_state->err_code & (1 << 1))
-                fault_type |= VM_PROTECTION_WRITE;
+                fault_type = VM_FAULT_WRITE;
             else
-                fault_type |= VM_PROTECTION_READ;
+                fault_type = VM_FAULT_READ;
 
             if (cpu_state->err_code & (1 << 4))
-                fault_type |= VM_PROTECTION_EXECUTE;
+                fault_type = VM_FAULT_INSTRUCTION_FETCH;
 
             if (!vm_page_fault(sched_get_curr_thread()->owner->as, cr2, fault_type))
                 panic("Unhandled user page fault at %p (err=%#llx)", cr2, cpu_state->err_code);

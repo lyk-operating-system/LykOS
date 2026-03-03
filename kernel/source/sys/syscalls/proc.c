@@ -13,9 +13,6 @@ sys_ret_t syscall_exit(int code)
 {
     log(LOG_DEBUG, "Process exited with code: %i.", code);
 
-    while (true) // TEMP
-        ;
-
     sched_yield(THREAD_STATE_TERMINATED);
 
     unreachable();
@@ -23,12 +20,11 @@ sys_ret_t syscall_exit(int code)
 
 sys_ret_t syscall_fork()
 {
-    log(LOG_WARN, "p=%u", sys_curr_proc()->pid);
-
     proc_t *child_proc = proc_fork(sys_curr_proc(), sys_curr_thread());
 
-    log(LOG_WARN, "Process forked!");
-    log(LOG_WARN, "p=%u c=%u", sys_curr_proc()->pid, child_proc->pid);
+    list_node_t *n = child_proc->threads.head;
+    thread_t *t = LIST_GET_CONTAINER(n, thread_t, proc_thread_list_node);
+    sched_enqueue(t);
 
     return (sys_ret_t) {child_proc->pid, EOK};
 }

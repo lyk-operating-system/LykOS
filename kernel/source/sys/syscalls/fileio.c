@@ -122,7 +122,7 @@ sys_ret_t syscall_write(int fd, void *buf, size_t count)
 {
     if (fd == 1 || fd == 2)
     {
-        log(LOG_INFO, "%s", buf);
+        log(LOG_DEBUG, "%s", buf);
         return (sys_ret_t) {count, EOK};
     }
 

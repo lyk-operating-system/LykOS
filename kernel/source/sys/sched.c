@@ -43,6 +43,9 @@ void sched_drop(thread_t *t)
     if (t == t->assigned_cpu->idle_thread)
         return;
 
+    if (t->status != THREAD_STATE_READY)
+        return;
+
     t->assigned_cpu = NULL;
 
     spinlock_acquire(&slock);
@@ -77,7 +80,6 @@ void sched_preemt()
     spinlock_acquire(&slock);
     thread_t *old = sched_get_curr_thread();
     old->last_ran = arch_timer_get_uptime_ns();
-    old->status = THREAD_STATE_READY;
     if (old->priority < MLFQ_LEVELS - 1)
         old->priority++;
     thread_t *new = pick_next_thread();
@@ -85,7 +87,7 @@ void sched_preemt()
     spinlock_release(&slock);
 
     vm_addrspace_load(new->owner->as);
-    arch_thread_context_switch(&old->context, &new->context);
+    arch_thread_context_switch(&old->context, &new->context); // this calls sched_drop()
 }
 
 void sched_yield(thread_status_t status)
@@ -98,7 +100,12 @@ void sched_yield(thread_status_t status)
     new->assigned_cpu = old->assigned_cpu;
     spinlock_release(&slock);
 
+    if (new != new->assigned_cpu->idle_thread)
+    {
+        log(LOG_INFO, "pid=%u tid=%u as=%p", new->owner->pid, new->tid, new->owner->as);
+    }
+
     vm_addrspace_load(new->owner->as);
 
-    arch_thread_context_switch(&old->context, &new->context);
+    arch_thread_context_switch(&old->context, &new->context); // this calls sched_drop()
 }
