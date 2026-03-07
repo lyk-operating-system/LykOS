@@ -221,6 +221,9 @@ int arch_paging_prot_page(arch_paging_map_t *map, uintptr_t vaddr, size_t size, 
 
     table[leaf_idx] = entry;
 
+    // Flush TLB
+    asm volatile("invlpg (%0)" ::"r"(vaddr) : "memory");
+
     return 0;
 }
 
@@ -323,7 +326,7 @@ void arch_paging_init()
     {
         pte_t *pml3 = (pte_t *)(pm_alloc(0)->addr + HHDM);
         memset(pml3, 0, 0x1000);
-        higher_half_entries[i] = (pte_t)((uintptr_t)pml3 - HHDM) | PTE_PRESENT | PTE_WRITE | PTE_USER;
+        higher_half_entries[i] = (pte_t)((uintptr_t)pml3 - HHDM) | PTE_PRESENT | PTE_WRITE;
     }
 
     // Setup PAT register
