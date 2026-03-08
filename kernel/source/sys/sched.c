@@ -100,11 +100,6 @@ void sched_yield(thread_status_t status)
     new->assigned_cpu = old->assigned_cpu;
     spinlock_release(&slock);
 
-    if (new != new->assigned_cpu->idle_thread)
-    {
-        log(LOG_INFO, "pid=%u tid=%u as=%p", new->owner->pid, new->tid, new->owner->as);
-    }
-
     vm_addrspace_load(new->owner->as);
 
     arch_thread_context_switch(&old->context, &new->context); // this calls sched_drop()
