@@ -96,7 +96,7 @@ void proc_destroy(proc_t *proc)
     heap_free(proc);
 }
 
-proc_t *proc_fork(proc_t *proc)
+proc_t *proc_fork(proc_t *proc, thread_t *calling_thread)
 {
     ASSERT(proc);
 
@@ -125,16 +125,12 @@ proc_t *proc_fork(proc_t *proc)
     new_proc->slock = SPINLOCK_INIT;
     new_proc->ref_count = 1;
 
-    // Duplicate threads
-    FOREACH(n, proc->threads)
-    {
-        thread_t *thread = LIST_GET_CONTAINER(n, thread_t, proc_thread_list_node);
-        thread_t *new_thread = thread_duplicate(thread);
-        if (!new_thread)
-            goto fail;
-        new_thread->owner = new_proc;
-        list_append(&new_proc->threads, &new_thread->proc_thread_list_node);
-    }
+    // Duplicate the calling thread
+    thread_t *new_thread = thread_duplicate(calling_thread);
+    if (!new_thread)
+        goto fail;
+    new_thread->owner = new_proc;
+    list_append(&new_proc->threads, &new_thread->proc_thread_list_node);
 
     spinlock_acquire(&slock);
     list_append(&proc_list, &proc->proc_list_node);
@@ -150,13 +146,6 @@ fail:
     if (new_proc->as) vm_addrspace_destroy(new_proc->as);
     if (new_proc->fd_table) fd_table_destroy(new_proc->fd_table);
     if (new_proc->cwd) heap_free(new_proc->cwd);
-
-    while (!list_is_empty(&new_proc->threads))
-    {
-        list_node_t *n = list_pop_head(&new_proc->threads);
-        thread_t *t = LIST_GET_CONTAINER(n, thread_t, proc_thread_list_node);
-        thread_destroy(t);
-    }
 
     heap_free(new_proc);
 

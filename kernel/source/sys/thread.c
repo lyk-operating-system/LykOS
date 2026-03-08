@@ -53,7 +53,7 @@ thread_t *thread_duplicate(thread_t *thread)
     thread_t *new_thread = heap_alloc(sizeof(thread_t));
     if (!new_thread)
         return NULL;
-    if (!arch_thread_context_copy(&new_thread->context, &thread->context))
+    if (!arch_thread_context_fork(&new_thread->context, &thread->context))
         goto cleanup;
     new_thread->tid = new_tid();
     new_thread->owner = NULL; // To be set by caller.

@@ -1,4 +1,4 @@
-#include "mm/vm/object.h"
+#include "mm/vm/vm_object.h"
 
 #include "assert.h"
 #include "mm/heap.h"
@@ -59,44 +59,20 @@ void vm_object_unref(vm_object_t *obj)
  * Page Management
  */
 
-bool vm_object_get_page(vm_object_t *obj, size_t offset, page_t **page_out)
-{
-    ASSERT(offset < obj->size);
-
-    spinlock_acquire(&obj->slock);
-    page_t *page = xa_get(&obj->cached_pages, offset);
-    if (page)
-    {
-        *page_out = page;
-        spinlock_release(&obj->slock);
-        return true;
-    }
-    spinlock_release(&obj->slock);
-
-    // Delegate to object-specific pager
-    return obj->ops->get_page(obj, offset, page_out);
-}
-
 void vm_object_insert_page(vm_object_t *obj, page_t *page, size_t offset)
 {
-    spinlock_acquire(&obj->slock);
     xa_insert(&obj->cached_pages, offset, page);
-    spinlock_release(&obj->slock);
 }
 
 page_t *vm_object_lookup_page(vm_object_t *obj, size_t offset)
 {
-    spinlock_acquire(&obj->slock);
     page_t *page = xa_get(&obj->cached_pages, offset);
-    spinlock_release(&obj->slock);
     return page;
 }
 
 void vm_object_remove_page(vm_object_t *obj, size_t offset)
 {
-    spinlock_acquire(&obj->slock);
     xa_remove(&obj->cached_pages, offset);
-    spinlock_release(&obj->slock);
 }
 
 /*

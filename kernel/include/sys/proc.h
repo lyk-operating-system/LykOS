@@ -5,6 +5,14 @@
 #include "sys/fd.h"
 #include "sync/spinlock.h"
 
+/*
+ * Forward declarations
+ */
+
+typedef struct thread thread_t;
+
+//
+
 typedef enum
 {
     PROC_STATE_NEW,
@@ -32,10 +40,12 @@ typedef struct proc
 }
 proc_t;
 
-// Create, destroy, and duplicate
+/*
+ * Create, destroy, and fork
+ */
 
 proc_t *proc_create(const char *name, const char *cwd, bool user);
 
 void proc_destroy(proc_t *proc);
 
-proc_t *proc_fork(proc_t *proc);
+proc_t *proc_fork(proc_t *proc, thread_t *calling_thread);

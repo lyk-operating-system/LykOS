@@ -176,15 +176,13 @@ void arch_int_handler(cpu_state_t *cpu_state)
             uint64_t cr2;
             __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
 
-            vm_protection_t fault_type = {0};
-
-            if (cpu_state->err_code & (1 << 1))
-                fault_type.write = 1;
+            vm_protection_t fault_type = 0;
+            if (cpu_state->err_code & 1)
+                fault_type = VM_FAULT_WRITE;
             else
-                fault_type.read = 1;
-
+                fault_type = VM_FAULT_READ;
             if (cpu_state->err_code & (1 << 4))
-                fault_type.exec = 1;
+                fault_type = VM_FAULT_INSTRUCTION_FETCH;
 
             if (!vm_page_fault(sched_get_curr_thread()->owner->as, cr2, fault_type))
                 panic("Unhandled user page fault at %p (err=%#llx)", cr2, cpu_state->err_code);

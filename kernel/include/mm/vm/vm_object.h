@@ -1,12 +1,15 @@
 #pragma once
 
 #include "fs/vfs.h"
+#include "mm/mm.h"
 #include "mm/pm.h"
 #include "sync/spinlock.h"
 #include "utils/ref.h"
 #include "utils/xarray.h"
 
-// Forward declarrations
+/*
+ * Forward declarrations
+ */
 
 typedef struct page page_t;
 typedef struct vnode vnode_t;
@@ -27,11 +30,9 @@ enum vm_object_type
 
 struct vm_object_ops
 {
-    bool (*get_page) (vm_object_t *obj, size_t offset, page_t **page_out);
-    bool (*put_page) (vm_object_t *obj, page_t *page);
-    bool (*copy_page)(vm_object_t *obj, size_t offset, page_t *src, page_t **dst_out);
-
-    void (*destroy)(vm_object_t *obj);
+    bool (*get_page)(vm_object_t *obj, size_t offset, vm_fault_type_t fault_type, page_t **page_out);
+    bool (*put_page)(vm_object_t *obj, page_t *page);
+    void (*destroy) (vm_object_t *obj);
 };
 
 struct vm_object
@@ -61,6 +62,7 @@ struct vm_object
         struct
         {
             struct vm_object *parent;
+            size_t offset;
         }
         shadow;
     }
@@ -71,20 +73,25 @@ struct vm_object
     ref_t refcount;
 };
 
-// Lifecycle
+/*
+ * Lifecycle
+ */
 
 vm_object_t *vm_object_create(vm_object_type_t type, size_t size);
 
 void vm_object_ref(vm_object_t *obj);
 void vm_object_unref(vm_object_t *obj);
 
-// Page Management
+/*
+ * Page Management
+ */
 
-bool vm_object_get_page(vm_object_t *obj, size_t offset, page_t **page_out);
 void vm_object_insert_page(vm_object_t *obj, page_t *page, size_t offset);
 void vm_object_remove_page(vm_object_t *obj, size_t offset);
 page_t *vm_object_lookup_page(vm_object_t *obj, size_t offset);
 
-// Sync
+/*
+ * Sync
+ */
 
 int vm_object_sync(vm_object_t *obj, size_t start, size_t end);

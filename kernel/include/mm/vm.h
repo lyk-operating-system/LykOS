@@ -14,8 +14,6 @@ typedef struct vm_addrspace vm_addrspace_t;
 
 //
 
-#define VM_FAULT_WRITE 0
-
 #define VM_MAP_PRIVATE         0x01
 #define VM_MAP_SHARED          0x02
 #define VM_MAP_ANON            0x04
@@ -53,7 +51,7 @@ extern vm_addrspace_t *vm_kernel_as;
 
 // Page fault handler
 
-bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_protection_t type);
+bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_fault_type_t type);
 
 // Mapping and unmapping
 
