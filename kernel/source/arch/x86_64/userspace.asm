@@ -36,7 +36,7 @@ __x86_64_thread_userspace_init:
     o64 sysret
 
 __x86_64_thread_userspace_fork_entry:
-    pop rcx ; sysret return address, basically program entry point
+    pop rcx ; sysret return address
 
     cli
     swapgs

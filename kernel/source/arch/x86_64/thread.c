@@ -7,6 +7,7 @@
 #include "arch/x86_64/msr.h"
 #include "arch/x86_64/tables/tss.h"
 #include "hhdm.h"
+#include "log.h"
 #include "mm/mm.h"
 #include "mm/pm.h"
 #include "sys/sched.h"
@@ -120,8 +121,9 @@ arch_thread_syscall_frame_t;
 bool arch_thread_context_fork(arch_thread_context_t *dest, arch_thread_context_t *src)
 {
     dest->self = dest;
-    dest->fs = src->fs;
-    dest->gs = src->gs;
+    x86_64_fpu_save(src->fpu_area);
+    dest->fs = x86_64_msr_read(X86_64_MSR_FS_BASE);
+    dest->gs = x86_64_msr_read(X86_64_MSR_KERNEL_GS_BASE);
 
     dest->kernel_stack = pm_alloc(0)->addr + HHDM + ARCH_PAGE_GRAN;
     dest->rsp = (dest->kernel_stack - sizeof(arch_thread_init_stack_user_t)) & (~0xF); // align as 16
@@ -150,10 +152,6 @@ bool arch_thread_context_fork(arch_thread_context_t *dest, arch_thread_context_t
         .user_stack = src->syscall_stack
     };
 
-    #include "log.h"
-    log(LOG_WARN, ". %p", init_stack->entry);
-    log(LOG_WARN, ". %p", init_stack->user_stack);
-
     if (src->fpu_area)
     {
         uint8_t order = pm_pagecount_to_order(CEIL(x86_64_fpu_area_size, ARCH_PAGE_GRAN) / ARCH_PAGE_GRAN);
@@ -180,5 +178,5 @@ void arch_thread_context_switch(arch_thread_context_t *curr, arch_thread_context
     arch_lcpu_thread_reg_write((size_t)next);
     x86_64_tss_set_rsp0(&x86_64_tss[sched_get_curr_cpuid()], next->kernel_stack);
 
-    __thread_context_switch(curr, next); // This function calls `sched_drop` for `curr` too.
+    __thread_context_switch(curr, next); // This function calls `sched_drop` internally for `curr`.
 }
