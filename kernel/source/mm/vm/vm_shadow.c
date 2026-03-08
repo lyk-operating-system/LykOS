@@ -9,7 +9,7 @@ static bool shadow_get_page(vm_object_t *obj, size_t offset, uint32_t fault_flag
 {
     spinlock_acquire(&obj->slock);
 
-    // check if the shadow object already has a private, modified copy of the page
+    // Check if the shadow object already has a private, modified copy of the page.
     page_t *page = vm_object_lookup_page(obj, offset);
     if (page)
     {
@@ -18,7 +18,7 @@ static bool shadow_get_page(vm_object_t *obj, size_t offset, uint32_t fault_flag
         return true;
     }
 
-    // if not, fetch the page from the parent object.
+    // If not, fetch the page from the parent object.
     vm_object_t *parent = obj->source.shadow.parent;
     ASSERT(parent);
     size_t parent_offset = offset + obj->source.shadow.offset;
@@ -26,18 +26,18 @@ static bool shadow_get_page(vm_object_t *obj, size_t offset, uint32_t fault_flag
 
     spinlock_release(&obj->slock);
 
-    // ask the parent for a READ fault, we do not want it to COW its own pages
+    // Ask the parent for a READ fault, we do not want it to COW its own pages.
     if (!parent->ops->get_page(parent, parent_offset, VM_FAULT_READ, &parent_page))
         return false;
 
-    // if the proc doesn't want to modify return the parent's page (for read-only usage)
-    if (!(fault_flags & VM_FAULT_WRITE))
+    // If the proc doesn't want to modify return the parent's page (for read-only usage).
+    if (fault_flags != VM_FAULT_WRITE)
     {
         *page_out = parent_page;
         return true;
     }
 
-    // for write faults perform COW
+    // For write faults perform COW.
     page = pm_alloc(0);
     if (!page)
         return false; // OUT OF MEM
@@ -48,15 +48,16 @@ static bool shadow_get_page(vm_object_t *obj, size_t offset, uint32_t fault_flag
     );
 
     spinlock_acquire(&obj->slock);
-    if (vm_object_lookup_page(obj, offset) == NULL)
+    page_t *existing = vm_object_lookup_page(obj, offset);
+    if (existing)
+    {
+        pm_free(page);
+        *page_out = existing;
+    }
+    else
     {
         vm_object_insert_page(obj, page, offset);
         *page_out = page;
-    }
-    else // another thread beat us to the COW fault while we were unlocked
-    {
-        pm_free(page);
-        *page_out = vm_object_lookup_page(obj, offset);
     }
     spinlock_release(&obj->slock);
 
@@ -76,7 +77,7 @@ static void shadow_destroy(vm_object_t *obj)
     xa_foreach(&obj->cached_pages, index, ptr)
         pm_free((page_t *)ptr);
 
-    // drop reference to parent
+    // Drop reference to parent.
     vm_object_unref(obj->source.shadow.parent);
 }
 

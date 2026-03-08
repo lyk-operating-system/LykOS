@@ -5,12 +5,12 @@
 #include "mm/pm.h"
 
 static bool anon_get_page(vm_object_t *obj, size_t offset,
-                          [[maybe_unused]] uint32_t fault_flags,
+                          [[maybe_unused]] vm_fault_type_t fault_type,
                           page_t **page_out)
 {
     spinlock_acquire(&obj->slock);
 
-    // Check if the page is already resident
+    // Check if the page is already resident.
     page_t *page = vm_object_lookup_page(obj, offset);
     if (page)
     {
@@ -19,7 +19,7 @@ static bool anon_get_page(vm_object_t *obj, size_t offset,
         return true;
     }
 
-    // Not resident: Allocate a new physical page
+    // Not resident: Allocate a new physical page.
     page = pm_alloc(0);
     if (!page)
     {
@@ -27,10 +27,10 @@ static bool anon_get_page(vm_object_t *obj, size_t offset,
         return false; // Out of memory
     }
 
-    // Anonymous memory must be zero-filled
+    // Anonymous memory must be zero-filled.
     memset((void *)(page->addr + HHDM), 0, ARCH_PAGE_GRAN);
 
-    // Cache it for future lookups
+    // Cache it for future lookups.
     vm_object_insert_page(obj, page, offset);
 
     *page_out = page;

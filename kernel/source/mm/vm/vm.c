@@ -109,14 +109,14 @@ static vm_segment_t *find_seg(vm_addrspace_t *as, uintptr_t addr)
 
 bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_fault_type_t type)
 {
-    log(LOG_WARN, "A %p", virt);
-
     vm_segment_t *seg = check_collision(as, virt, 1);
     if (!seg)
         return false;
 
     // protection check
-    if ((type & seg->prot) != type)
+    if ((type == VM_FAULT_READ  && !(seg->prot & VM_PROTECTION_READ))
+    ||  (type == VM_FAULT_WRITE && !(seg->prot & VM_PROTECTION_WRITE))
+    ||  (type == VM_FAULT_INSTRUCTION_FETCH  && !(seg->prot & VM_PROTECTION_EXECUTE)))
         return false;
 
     uintptr_t vaddr_aligned = FLOOR(virt, ARCH_PAGE_GRAN);
@@ -125,22 +125,39 @@ bool vm_page_fault(vm_addrspace_t *as, uintptr_t virt, vm_fault_type_t type)
 
     page_t *page = NULL;
     if (!obj->ops->get_page(obj, pgidx, type, &page))
-            return false;
+        return false;
+
+    /*
+     * If this was a non-present read fault then map the pages, but don't give
+     * write perms.
+     */
+    vm_protection_t prot = seg->prot;
+    if (type != VM_FAULT_WRITE)
+        prot &= ~VM_PROTECTION_WRITE;
 
     if (arch_paging_vaddr_to_paddr(as->page_map, vaddr_aligned, NULL))
-        arch_paging_prot_page(
+    {
+        arch_paging_unmap_page(
+            as->page_map,
+            vaddr_aligned
+        );
+
+        arch_paging_map_page(
             as->page_map,
             vaddr_aligned,
+            page->addr,
             ARCH_PAGE_GRAN,
-            seg->prot
+            prot,
+            VM_CACHE_STANDARD
         );
+    }
     else
         arch_paging_map_page(
             as->page_map,
             vaddr_aligned,
             page->addr,
             ARCH_PAGE_GRAN,
-            seg->prot,
+            prot,
             VM_CACHE_STANDARD
         );
 
@@ -283,7 +300,8 @@ void *vm_alloc(size_t size)
     vm_map(
         vm_kernel_as,
         0, size,
-        VM_PROTECTION_READ | VM_PROTECTION_WRITE, VM_MAP_ANON | VM_MAP_POPULATE,
+        VM_PROTECTION_READ | VM_PROTECTION_WRITE,
+        VM_MAP_ANON | VM_MAP_POPULATE,
         NULL, 0,
         &out
     );
@@ -417,28 +435,30 @@ vm_addrspace_t *vm_addrspace_clone(vm_addrspace_t *parent_as)
     FOREACH(node, parent_as->segments)
     {
         vm_segment_t *parent_seg = LIST_GET_CONTAINER(node, vm_segment_t, list_node);
+
+        // The parent segment's backing object becomes the shared backing object.
         vm_object_t *shared_backing = parent_seg->object;
 
-        // Create shadows for child and parent
+        // Create shadow for child.
         vm_object_t *child_shadow = vm_object_create(VM_OBJ_SHADOW, shared_backing->size);
         if (!child_shadow)
             goto fail;
+        child_shadow->source.shadow.parent = shared_backing;
         child_shadow->source.shadow.offset = 0;
+        vm_object_ref(shared_backing);
+
+        // Create shadow for parent.
         vm_object_t *parent_shadow = vm_object_create(VM_OBJ_SHADOW, shared_backing->size);
         if (!parent_shadow)
         {
             vm_object_unref(child_shadow);
             goto fail;
         }
-        parent_shadow->source.shadow.offset = 0;
-        child_shadow->source.shadow.parent = shared_backing; // Make them point to original object
         parent_shadow->source.shadow.parent = shared_backing;
-        vm_object_ref(shared_backing); // Update ref count
+        parent_shadow->source.shadow.offset = 0;
         vm_object_ref(shared_backing);
 
-        parent_seg->object = parent_shadow;
-
-        // Create segment
+        // Create segment for child.
         vm_segment_t *child_seg = heap_alloc(sizeof(vm_segment_t));
         if (!child_seg)
         {
@@ -449,6 +469,10 @@ vm_addrspace_t *vm_addrspace_clone(vm_addrspace_t *parent_as)
         child_seg->object = child_shadow;
 
         list_append(&new_as->segments, &child_seg->list_node);
+
+        // Update segment for parent.
+        parent_seg->object = parent_shadow;
+        parent_seg->offset = 0;
 
         for (size_t i = 0; i < parent_seg->length; i += ARCH_PAGE_GRAN)
         {

@@ -14,8 +14,6 @@ typedef struct vm_addrspace vm_addrspace_t;
 
 //
 
-#define VM_FAULT_WRITE 0
-
 #define VM_MAP_PRIVATE         0x01
 #define VM_MAP_SHARED          0x02
 #define VM_MAP_ANON            0x04

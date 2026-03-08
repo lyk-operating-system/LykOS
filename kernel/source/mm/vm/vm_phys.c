@@ -1,12 +1,13 @@
 #include "mm/vm/vm_object.h"
 
 #include "mm/pm.h"
+#include "mm/mm.h"
 
 static bool phys_get_page(vm_object_t *obj, size_t offset,
-                          [[maybe_unused]] uint32_t fault_flags,
+                          [[maybe_unused]] vm_fault_type_t fault_type,
                           page_t **page_out)
 {
-    uintptr_t paddr = obj->source.phys.paddr + offset;
+    uintptr_t paddr = obj->source.phys.paddr + offset * ARCH_PAGE_GRAN;
 
     *page_out = pm_phys_to_page(paddr);
     return *page_out != NULL;

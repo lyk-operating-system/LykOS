@@ -177,12 +177,10 @@ void arch_int_handler(cpu_state_t *cpu_state)
             __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
 
             vm_protection_t fault_type = 0;
-
-            if (cpu_state->err_code & (1 << 1))
+            if (cpu_state->err_code & 1)
                 fault_type = VM_FAULT_WRITE;
             else
                 fault_type = VM_FAULT_READ;
-
             if (cpu_state->err_code & (1 << 4))
                 fault_type = VM_FAULT_INSTRUCTION_FETCH;
 

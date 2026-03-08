@@ -1,6 +1,7 @@
 #pragma once
 
 #include "fs/vfs.h"
+#include "mm/mm.h"
 #include "mm/pm.h"
 #include "sync/spinlock.h"
 #include "utils/ref.h"
@@ -29,7 +30,7 @@ enum vm_object_type
 
 struct vm_object_ops
 {
-    bool (*get_page)(vm_object_t *obj, size_t offset, uint32_t fault_flags, page_t **page_out);
+    bool (*get_page)(vm_object_t *obj, size_t offset, vm_fault_type_t fault_type, page_t **page_out);
     bool (*put_page)(vm_object_t *obj, page_t *page);
     void (*destroy) (vm_object_t *obj);
 };
