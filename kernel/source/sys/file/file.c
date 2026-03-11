@@ -53,7 +53,16 @@ file_t *file_create_vnode(vnode_t *vn, int flags)
 file_t *file_create_socket([[maybe_unused]] socket_t *so,
                            [[maybe_unused]] int flags)
 {
-    return NULL;
+    ASSERT(so);
+
+    file_t *f = file_alloc(
+        FILE_TYPE_VNODE,
+        &file_vnode_ops,
+        so,
+        flags
+    );
+
+    return f;
 }
 
 file_t *file_create_pipe([[maybe_unused]] pipe_t *pipe,
