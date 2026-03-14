@@ -1,0 +1,85 @@
+#include "mm/vm/vm_object.h"
+
+#include "assert.h"
+#include "mm/heap.h"
+#include "mm/mm.h"
+
+extern vm_object_ops_t anon_ops;
+extern vm_object_ops_t phys_ops;
+extern vm_object_ops_t shadow_ops;
+
+static vm_object_ops_t *ops_table[] = {
+    [VM_OBJ_ANON]   = &anon_ops,
+    [VM_OBJ_PHYS]   = &phys_ops,
+    [VM_OBJ_SHADOW] = &shadow_ops
+};
+
+/*
+ * Lifecycle
+ */
+
+vm_object_t *vm_object_create(vm_object_type_t type, size_t size)
+{
+    vm_object_t *obj = heap_alloc(sizeof(vm_object_t));
+    if (!obj)
+        return NULL;
+
+    obj->type = type;
+    obj->size = size;
+    obj->flags = 0;
+    obj->cached_pages = XARRAY_INIT;
+    obj->ops = ops_table[type];
+    memset(&obj->source, 0, sizeof(obj->source));
+    obj->slock = SPINLOCK_INIT;
+    obj->refcount = REF_INIT;
+
+    return obj;
+}
+
+static void vm_object_destroy(vm_object_t *obj)
+{
+    ASSERT(ref_read(&obj->refcount) == 1);
+
+    obj->ops->destroy(obj);
+    heap_free(obj);
+}
+
+void vm_object_ref(vm_object_t *obj)
+{
+    ref_inc(&obj->refcount);
+}
+
+void vm_object_unref(vm_object_t *obj)
+{
+    if (ref_dec(&obj->refcount))
+        vm_object_destroy(obj);
+}
+
+/*
+ * Page Management
+ */
+
+void vm_object_insert_page(vm_object_t *obj, page_t *page, size_t offset)
+{
+    xa_insert(&obj->cached_pages, offset, page);
+}
+
+page_t *vm_object_lookup_page(vm_object_t *obj, size_t offset)
+{
+    page_t *page = xa_get(&obj->cached_pages, offset);
+    return page;
+}
+
+void vm_object_remove_page(vm_object_t *obj, size_t offset)
+{
+    xa_remove(&obj->cached_pages, offset);
+}
+
+/*
+ * Sync
+ */
+
+int vm_object_sync(vm_object_t *obj, size_t start, size_t end)
+{
+    panic("TODO");
+}

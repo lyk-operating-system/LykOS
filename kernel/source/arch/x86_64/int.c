@@ -4,8 +4,8 @@
 #include "arch/x86_64/devices/lapic.h"
 #include "mm/heap.h"
 #include "panic.h"
-#include "proc/sched.h"
 #include "sync/spinlock.h"
+#include "sys/sched.h"
 #include <stddef.h>
 
 /*
@@ -170,7 +170,25 @@ void arch_int_handler(cpu_state_t *cpu_state)
 {
     if (cpu_state->int_no < 32) // Exceptions
     {
-        panic("CPU EXCEPTION: %llx %#llx", cpu_state->int_no, cpu_state->err_code);
+        if (((cpu_state->cs & 0x3) == 3)
+        && cpu_state->int_no == 14) // PF from userspace
+        {
+            uint64_t cr2;
+            __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
+
+            vm_protection_t fault_type = 0;
+            if (cpu_state->err_code & 1)
+                fault_type = VM_FAULT_WRITE;
+            else
+                fault_type = VM_FAULT_READ;
+            if (cpu_state->err_code & (1 << 4))
+                fault_type = VM_FAULT_INSTRUCTION_FETCH;
+
+            if (!vm_page_fault(sched_get_curr_thread()->owner->as, cr2, fault_type))
+                panic("Unhandled user page fault at %p (err=%#llx)", cr2, cpu_state->err_code);
+        }
+        else
+            panic("CPU EXCEPTION: %llx %#llx", cpu_state->int_no, cpu_state->err_code);
     }
     else // IRQs
     {

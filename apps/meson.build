@@ -8,7 +8,7 @@ project(
 executable(
     'init',
     'init.c',
-    link_args: ['-static', '-no-pie'],
+    link_args: ['-static', '-no-pie', '-O0', '-g'],
     pie: false,
     install: true,
     install_dir: 'bin',

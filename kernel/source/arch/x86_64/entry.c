@@ -7,8 +7,8 @@
 #include "mm/heap.h"
 #include "mm/pm.h"
 #include "mm/vm.h"
-#include "proc/smp.h"
-#include "proc/thread.h"
+#include "sys/smp.h"
+#include "sys/thread.h"
 
 #include "arch/x86_64/devices/hpet.h"
 #include "arch/x86_64/devices/ioapic.h"

@@ -16,7 +16,7 @@ bus_t *bus_get(const char *name)
         if (strcmp(bus->name, name) == 0)
         {
             spinlock_release(&bus_list_slock);
-            ref_get(&bus->refcount);
+            ref_inc(&bus->refcount);
             return bus;
         }
     }
@@ -27,7 +27,7 @@ bus_t *bus_get(const char *name)
 
 void bus_put(bus_t *bus)
 {
-    ref_put(&bus->refcount);
+    ref_dec(&bus->refcount);
 }
 
 bool bus_register(bus_t *bus)
@@ -37,7 +37,7 @@ bool bus_register(bus_t *bus)
 
     bus->devices = LIST_INIT;
     bus->drivers = LIST_INIT;
-    ref_init(&bus->refcount);
+    bus->refcount = REF_INIT;
     bus->slock = SPINLOCK_INIT;
 
     spinlock_acquire(&bus_list_slock);

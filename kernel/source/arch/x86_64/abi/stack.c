@@ -6,14 +6,13 @@ uintptr_t x86_64_abi_stack_setup(vm_addrspace_t *as, size_t stack_size, char **a
     uintptr_t stack_ptr;
     vm_map(
         as,
-        0,
-        stack_size,
-        MM_PROT_FULL,
-        VM_MAP_ANON | VM_MAP_POPULATE | VM_MAP_PRIVATE,
-        NULL,
-        0,
+        0x1000, stack_size,
+        VM_PROTECTION_FULL,
+        VM_MAP_ANON | VM_MAP_POPULATE | VM_MAP_PRIVATE | VM_MAP_FIXED,
+        NULL, 0,
         &stack_ptr
     );
+
     uintptr_t stack = stack_ptr + stack_size - 1;
     stack &= ~0xF;
     return stack;

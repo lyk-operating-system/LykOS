@@ -45,12 +45,13 @@ source/tools {
 package/apps {
     dependencies: [
         source/apps source/support
-        image/meson image/nasm
+        image/meson
         tool/gcc
     ]
     options: [ "arch" ]
     configure: <sh>
         meson setup \
+            --buildtype=release \
             --cross-file=$SOURCES_DIR/support/cross-files/lykos-$OPTION_arch.ini \
             --prefix=$PREFIX \
             $SOURCES_DIR/apps
@@ -67,8 +68,8 @@ package/apps {
 
 tool/ksym {
     dependencies: [
-        image/clang,
-        source/tools,
+        image/clang
+        source/tools
     ]
     configure: <sh>
         cp $SOURCES_DIR/tools/ksym.c .
@@ -135,6 +136,7 @@ custom/initrd {
         source/initrd
         package/apps package/modules
     ]
+    always_clean: "true"
     build: <sh>
         cp -r $SOURCES_DIR/initrd .
         cp -r $SYSROOT_DIR/* initrd
@@ -169,6 +171,7 @@ custom/image {
         source/limine source/support
     ]
     options: [ "arch" ]
+    always_clean: "true"
     build: <sh>
         mkdir -p iso_root/EFI/BOOT
 

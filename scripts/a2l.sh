@@ -3,4 +3,4 @@
 ARCH="${1:-x86_64}"
 ADDRESS=0x$2
 
-addr2line -fai -e $(chariot --option arch=${ARCH} path custom/kernel)/usr/bin/kernel-${ARCH}.elf $ADDRESS
+addr2line -fai -e $(chariot --option arch=${ARCH} path -r custom/kernel)/usr/bin/kernel-${ARCH}.elf $ADDRESS

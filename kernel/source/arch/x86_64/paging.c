@@ -72,9 +72,9 @@ int arch_paging_map_page(arch_paging_map_t *map, uintptr_t vaddr, uintptr_t padd
     ASSERT(paddr % size == 0);
 
     pte_t flags = 0;
-    if (!prot.read) log(LOG_ERROR, "No-read mapping is not supported on x86_64!");
-    if (prot.write) flags |= PTE_WRITE;
-    if (!prot.exec) flags |= PTE_NX;
+    if (!(prot & VM_PROTECTION_READ)) log(LOG_ERROR, "No-read mapping is not supported on x86_64!");
+    if (prot & VM_PROTECTION_WRITE) flags |= PTE_WRITE;
+    if (!(prot & VM_PROTECTION_EXECUTE)) flags |= PTE_NX;
     const int attr_idx[] = {
         [VM_CACHE_STANDARD]      = 0,
         [VM_CACHE_WRITE_THROUGH] = 1,
@@ -174,6 +174,59 @@ int arch_paging_unmap_page(arch_paging_map_t *map, uintptr_t vaddr)
     return 0;
 }
 
+// Flags
+
+int arch_paging_prot_page(arch_paging_map_t *map, uintptr_t vaddr, size_t size, vm_protection_t prot)
+{
+    ASSERT(size == ARCH_PAGE_SIZE_4K
+        || size == ARCH_PAGE_SIZE_2M
+        || size == ARCH_PAGE_SIZE_1G);
+    ASSERT(vaddr % size == 0);
+
+    bool is_user = vaddr < HHDM;
+
+    size_t indices[] = {
+        (vaddr >> 12) & 0x1FF,
+        (vaddr >> 21) & 0x1FF,
+        (vaddr >> 30) & 0x1FF,
+        (vaddr >> 39) & 0x1FF
+    };
+
+    pte_t *table = map->pml4;
+    size_t target_level = (size == 1 * GIB) ? 2
+                        : (size == 2 * MIB) ? 1
+                        : 0;
+    for (size_t level = 3; level > target_level; level--)
+    {
+        size_t idx = indices[level];
+        ASSERT(table[idx] & PTE_PRESENT);
+        ASSERT(!(table[idx] & PTE_HUGE));
+
+        pte_t *next = get_next_level(table, idx, false, is_user);
+        ASSERT(next);
+        table = next;
+    }
+
+    // Leaf
+
+    uint64_t leaf_idx = indices[target_level];
+    ASSERT(table[leaf_idx] & PTE_PRESENT);
+
+    pte_t entry = table[leaf_idx];
+    entry &= ~(PTE_WRITE | PTE_NX | PTE_USER);
+    if (!(prot & VM_PROTECTION_READ)) log(LOG_ERROR, "No-read mapping is not supported on x86_64!");
+    if (prot & VM_PROTECTION_WRITE) entry |= PTE_WRITE;
+    if (!(prot & VM_PROTECTION_EXECUTE)) entry |= PTE_NX;
+    if (is_user)    entry |= PTE_USER;
+
+    table[leaf_idx] = entry;
+
+    // Flush TLB
+    asm volatile("invlpg (%0)" ::"r"(vaddr) : "memory");
+
+    return 0;
+}
+
 // Utils
 
 bool arch_paging_vaddr_to_paddr(const arch_paging_map_t *map, uintptr_t vaddr, uintptr_t *out_paddr)
@@ -194,7 +247,8 @@ bool arch_paging_vaddr_to_paddr(const arch_paging_map_t *map, uintptr_t vaddr, u
 
     if (pml3ent & PTE_HUGE)
     {
-        *out_paddr = PTE_ADDR_MASK(pml3ent) + (vaddr & ((1ull << 30) - 1));
+        if (out_paddr)
+            *out_paddr = PTE_ADDR_MASK(pml3ent) + (vaddr & ((1ull << 30) - 1));
         return true;
     }
 
@@ -205,7 +259,8 @@ bool arch_paging_vaddr_to_paddr(const arch_paging_map_t *map, uintptr_t vaddr, u
 
     if (pml2ent & PTE_HUGE)
     {
-        *out_paddr = PTE_ADDR_MASK(pml2ent) + (vaddr & ((1ull << 21) - 1));
+        if (out_paddr)
+            *out_paddr = PTE_ADDR_MASK(pml2ent) + (vaddr & ((1ull << 21) - 1));
         return true;
     }
 
@@ -214,7 +269,8 @@ bool arch_paging_vaddr_to_paddr(const arch_paging_map_t *map, uintptr_t vaddr, u
     if (!(pml1ent & PTE_PRESENT))
         return false;
 
-    *out_paddr = PTE_ADDR_MASK(pml1ent) + (vaddr & 0xFFF);
+    if (out_paddr)
+        *out_paddr = PTE_ADDR_MASK(pml1ent) + (vaddr & 0xFFF);
     return true;
 }
 
@@ -270,7 +326,7 @@ void arch_paging_init()
     {
         pte_t *pml3 = (pte_t *)(pm_alloc(0)->addr + HHDM);
         memset(pml3, 0, 0x1000);
-        higher_half_entries[i] = (pte_t)((uintptr_t)pml3 - HHDM) | PTE_PRESENT | PTE_WRITE | PTE_USER;
+        higher_half_entries[i] = (pte_t)((uintptr_t)pml3 - HHDM) | PTE_PRESENT | PTE_WRITE;
     }
 
     // Setup PAT register

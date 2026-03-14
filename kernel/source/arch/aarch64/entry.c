@@ -6,8 +6,8 @@
 #include "mm/heap.h"
 #include "mm/pm.h"
 #include "mm/vm.h"
-#include "proc/smp.h"
-#include "proc/thread.h"
+#include "sys/smp.h"
+#include "sys/thread.h"
 
 #include "arch/aarch64/devices/gic.h"
 #include "arch/aarch64/int.h"

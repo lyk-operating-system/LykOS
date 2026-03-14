@@ -1,3 +1,5 @@
+subdir('vm')
+
 c_files += files(
     'dma.c',
     'heap.c',
@@ -5,5 +7,4 @@ c_files += files(
     'mm.c',
     'mmio.c',
     'pm.c',
-    'vm.c',
 )
