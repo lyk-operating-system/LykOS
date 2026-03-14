@@ -88,7 +88,19 @@ struct socket
 
 struct socket_ops
 {
+    int     (*accept)(socket_t *server, socket_t **out);
 
+    int     (*bind)(socket_t *so, const struct sockaddr *addr);
+    int     (*connect)(socket_t *client, const struct sockaddr *addr);
+    int     (*listen)(socket_t *so, int backlog);
+
+    int     (*getsockname)(socket_t *so, struct sockaddr *addr);
+    int     (*getpeername)(socket_t *so, struct sockaddr *addr);
+
+    ssize_t (*recv)(socket_t *so, void *buf, size_t len, int flags);
+    ssize_t (*send)(socket_t *so, const void *buf, size_t len, int flags);
+
+    int     (*shutdown)(socket_t *so, int how);
 };
 
 int socket_create(int domain, int type, int protocol, socket_t **so);
