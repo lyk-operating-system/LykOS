@@ -3,6 +3,13 @@
 #include "sys/types.h"
 
 /*
+ * Forward declarations
+ */
+
+typedef struct socket socket_t;
+typedef struct socket_ops socket_ops_t;
+
+/*
  * Socket types
  */
 
@@ -68,5 +75,20 @@ struct sockaddr
     char sa_data[14];
 };
 
-
 #define SOCKET_MAXADDRLEN   255
+
+/*
+ * LykOS impl-specific
+ */
+
+struct socket
+{
+    socket_ops_t *ops;
+};
+
+struct socket_ops
+{
+
+};
+
+int socket_create(int domain, int type, int protocol, socket_t **so);

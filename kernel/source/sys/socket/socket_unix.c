@@ -30,7 +30,6 @@ struct socket_unix
     socket_unix_t *pending[UNIX_BACKLOG_MAX];
     int pending_count;
 
-    /* simple receive buffer */
     char buffer[4096];
     size_t buffer_len;
 
@@ -58,10 +57,10 @@ enum
 int unix_accept(socket_unix_t *server, socket_unix_t **out)
 {
     if (server->state != UNIX_STATE_LISTEN)
-        return -EINVAL;
+        return EINVAL;
 
     if (server->pending_count == 0)
-        return -EAGAIN;
+        return EAGAIN;
 
     socket_unix_t *client = server->pending[0];
 
@@ -81,7 +80,7 @@ int unix_accept(socket_unix_t *server, socket_unix_t **out)
 int unix_bind(socket_unix_t *so, const struct sockaddr_un *addr)
 {
     if (so->state != UNIX_STATE_INIT)
-        return -EINVAL;
+        return EINVAL;
 
     strncpy(so->path, addr->sun_path, UNIX_PATH_MAX);
 
@@ -96,16 +95,15 @@ int unix_connect(socket_unix_t *client, const struct sockaddr_un *addr)
 {
     socket_unix_t *server;
 
-    /* lookup socket by path */
-    server = unix_lookup(addr->sun_path);
+    server =
     if (!server)
-        return -ENOENT;
+        return ENOENT;
 
     if (server->state != UNIX_STATE_LISTEN)
-        return -ECONNREFUSED;
+        return ECONNREFUSED;
 
     if (server->pending_count >= UNIX_BACKLOG_MAX)
-        return -ECONNREFUSED;
+        return ECONNREFUSED;
 
     server->pending[server->pending_count++] = client;
 
@@ -118,7 +116,7 @@ int unix_connect(socket_unix_t *client, const struct sockaddr_un *addr)
 int unix_listen(socket_unix_t *so, int backlog)
 {
     if (so->state != UNIX_STATE_BOUND)
-        return -EINVAL;
+        return EINVAL;
 
     if (backlog > UNIX_BACKLOG_MAX)
         backlog = UNIX_BACKLOG_MAX;
@@ -135,7 +133,7 @@ ssize_t unix_recv(socket_unix_t *so, void *buf, size_t len)
     if (so->buffer_len == 0)
     {
         spinlock_release(&so->lock);
-        return -EAGAIN;
+        return EAGAIN;
     }
 
     if (len > so->buffer_len)
@@ -158,7 +156,7 @@ ssize_t unix_recv(socket_unix_t *so, void *buf, size_t len)
 ssize_t unix_send(socket_unix_t *so, const void *buf, size_t len)
 {
     if (!so->peer)
-        return -ENOTCONN;
+        return ENOTCONN;
 
     socket_unix_t *peer = so->peer;
 
