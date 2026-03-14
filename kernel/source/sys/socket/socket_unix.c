@@ -147,16 +147,18 @@ int unix_bind(socket_unix_t *so, const struct sockaddr_un *addr)
 
     so->state = UNIX_STATE_BOUND;
 
-    /* TODO: register in global unix socket table */
+    int err = unix_table_register(so);
+    if (err != EOK)
+        return err;
 
-    return 0;
+    return EOK;
 }
 
 int unix_connect(socket_unix_t *client, const struct sockaddr_un *addr)
 {
     socket_unix_t *server;
 
-    server =
+    server = unix_table_lookup(addr->sun_path);
     if (!server)
         return ENOENT;
 
@@ -171,7 +173,7 @@ int unix_connect(socket_unix_t *client, const struct sockaddr_un *addr)
     client->peer = server;
     client->state = UNIX_STATE_CONNECTED;
 
-    return 0;
+    return EOK;
 }
 
 int unix_listen(socket_unix_t *so, int backlog)
@@ -184,7 +186,7 @@ int unix_listen(socket_unix_t *so, int backlog)
 
     so->state = UNIX_STATE_LISTEN;
 
-    return 0;
+    return EOK;
 }
 
 ssize_t unix_recv(socket_unix_t *so, void *buf, size_t len)
