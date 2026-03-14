@@ -6,6 +6,7 @@
 #include "mm/mm.h"
 #include "utils/ref.h"
 #include "utils/string.h"
+#include "utils/list.h"
 #include "uapi/errno.h"
 
 #define UNIX_PATH_MAX       256
@@ -27,14 +28,17 @@ struct socket_unix
 
     char path[UNIX_PATH_MAX];
 
-    socket_unix_t *pending[UNIX_BACKLOG_MAX];
-    int pending_count;
+    list_t pending;
 
-    char buffer[4096];
+    void *buffer;
     size_t buffer_len;
+
+    list_node_t table_node; // membership in unix_table
+    list_node_t pending_node; // membership in server->pending
 
     spinlock_t lock;
     ref_t refcount;
+
 };
 
 /*
@@ -51,6 +55,72 @@ enum
 };
 
 /*
+ * Global socket table
+ */
+
+typedef struct
+{
+    spinlock_t slock;
+    list_t sockets;
+}
+unix_table_t;
+
+static unix_table_t unix_table = { 0 };
+
+/* Socket table operations */
+
+static int unix_table_register(socket_unix_t *so)
+{
+    spinlock_acquire(&unix_table.slock);
+
+    /* Reject duplicate paths */
+    list_node_t *node = unix_table.sockets.head;
+    while (node)
+    {
+        socket_unix_t *entry = LIST_GET_CONTAINER(node, socket_unix_t, table_node);
+        if (strncmp(entry->path, so->path, UNIX_PATH_MAX) == 0)
+        {
+            spinlock_release(&unix_table.slock);
+            return EADDRINUSE;
+        }
+        node = node->next;
+    }
+
+    list_append(&unix_table.sockets, &so->table_node);
+
+    spinlock_release(&unix_table.slock);
+    return EOK;
+}
+
+static socket_unix_t *unix_table_lookup(const char *path)
+{
+    spinlock_acquire(&unix_table.slock);
+
+    socket_unix_t *found = NULL;
+    list_node_t *node = unix_table.sockets.head;
+    while (node)
+    {
+        socket_unix_t *entry = LIST_GET_CONTAINER(node, socket_unix_t, table_node);
+        if (strncmp(entry->path, path, UNIX_PATH_MAX) == 0)
+        {
+            found = entry;
+            break;
+        }
+        node = node->next;
+    }
+
+    spinlock_release(&unix_table.slock);
+    return found;
+}
+
+static void unix_table_unregister(socket_unix_t *so)
+{
+    spinlock_acquire(&unix_table.slock);
+    list_remove(&unix_table.sockets, &so->table_node);
+    spinlock_release(&unix_table.slock);
+}
+
+/*
  * Socket operations
  */
 
@@ -59,22 +129,13 @@ int unix_accept(socket_unix_t *server, socket_unix_t **out)
     if (server->state != UNIX_STATE_LISTEN)
         return EINVAL;
 
-    if (server->pending_count == 0)
+    if (list_is_empty(&server->pending))
         return EAGAIN;
 
-    socket_unix_t *client = server->pending[0];
 
-    memmove(
-        &server->pending[0],
-        &server->pending[1],
-        sizeof(server->pending[0]) * (server->pending_count - 1)
-    );
+    *out = LIST_GET_CONTAINER(list_pop_head(&server->pending), socket_unix_t, pending_node);
 
-    server->pending_count--;
-
-    *out = client;
-
-    return 0;
+    return EOK;
 }
 
 int unix_bind(socket_unix_t *so, const struct sockaddr_un *addr)
@@ -102,10 +163,10 @@ int unix_connect(socket_unix_t *client, const struct sockaddr_un *addr)
     if (server->state != UNIX_STATE_LISTEN)
         return ECONNREFUSED;
 
-    if (server->pending_count >= UNIX_BACKLOG_MAX)
+    if (server->pending.length >= UNIX_BACKLOG_MAX)
         return ECONNREFUSED;
 
-    server->pending[server->pending_count++] = client;
+    list_append(&server->pending, &client->pending_node);
 
     client->peer = server;
     client->state = UNIX_STATE_CONNECTED;
