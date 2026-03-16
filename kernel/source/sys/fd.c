@@ -45,15 +45,14 @@ void fd_table_destroy(fd_table_t *table)
     {
         if (table->files[i])
         {
-            file_drop(table->files[i]);
+            file_ref(table->files[i]);
             table->files[i] = NULL;
         }
     }
 
     vm_free(table->files);
-    heap_free(table);
-
     spinlock_release(&table->lock);
+    heap_free(table);
 }
 
 fd_table_t *fd_table_clone(fd_table_t *parent)
@@ -72,8 +71,8 @@ fd_table_t *fd_table_clone(fd_table_t *parent)
         file_t *f = parent->files[i];
         if (f)
         {
-            file_hold(f);
-            parent->files[i] = f;
+            file_ref(f);
+            child->files[i] = f;
         }
     }
 
@@ -89,10 +88,10 @@ int fd_alloc(fd_table_t *table, file_t *file, int *out_fd)
 
     for (int i = 0; i < table->capacity; i++)
     {
-        if (table->files)
+        if (table->files[i])
             continue;
 
-        file_hold(file);
+        file_ref(file);
         table->files[i] = file;
         *out_fd = i;
 
@@ -120,7 +119,7 @@ int fd_free(fd_table_t *table, int fd)
 
     table->files[fd] = NULL;
     spinlock_release(&table->lock);
-    file_drop(file);
+    file_unref(file);
     return true;
 }
 
@@ -132,7 +131,7 @@ file_t *fd_get(fd_table_t *table, int fd)
 
     file_t *file = table->files[fd];
     if (file)
-        file_hold(file);
+        file_ref(file);
 
     spinlock_release(&table->lock);
     return file;
@@ -142,5 +141,5 @@ void fd_put(file_t *file)
 {
     ASSERT(file);
 
-    file_drop(file);
+    file_unref(file);
 }

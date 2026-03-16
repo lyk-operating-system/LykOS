@@ -90,12 +90,12 @@ file_t *file_create_eventq([[maybe_unused]] eventq_t *eq,
     return NULL;
 }
 
-void file_hold(file_t *file)
+void file_ref(file_t *file)
 {
     ref_inc(&file->refcount);
 }
 
-void file_drop(file_t *file)
+void file_unref(file_t *file)
 {
     if (ref_dec(&file->refcount))
         heap_free(file);

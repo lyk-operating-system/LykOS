@@ -82,5 +82,5 @@ file_t *file_create_fifo(fifo_t *vn, int flags);
 file_t *file_create_msgq(msgq_t *mq, int flags);
 file_t *file_create_eventq(eventq_t *eq, int flags);
 
-void file_hold(file_t *file);
-void file_drop(file_t *file);
+void file_ref(file_t *file);
+void file_unref(file_t *file);
