@@ -40,11 +40,11 @@ sys_ret_t syscall_open(const char *path, int flags)
     err = fd_alloc(sys_curr_proc()->fd_table, file, &fd);
     if (err != EOK)
     {
-        file_drop(file);
+        file_unref(file);
         return (sys_ret_t) {0, err};
     }
 
-    file_drop(file); // the fd table holds a ref (because of fd_alloc), drop ours
+    file_unref(file); // the fd table holds a ref (because of fd_alloc), drop ours
     return (sys_ret_t) {fd, EOK};
 }
 
@@ -55,13 +55,13 @@ sys_ret_t syscall_close(int fd)
 
 sys_ret_t syscall_read(int fd, void *buf, size_t count)
 {
-    file_t *file = fd_get(sys_curr_proc()->fd_table, fd);
+    file_t *file = fd_get_file(sys_curr_proc()->fd_table, fd);
     if (!file)
         return (sys_ret_t){0, EBADF};
 
     if (!file->ops || !file->ops->read)
     {
-        fd_put(file);
+        file_unref(file);
         return (sys_ret_t) {0, EBADF};
     }
 
@@ -84,11 +84,11 @@ sys_ret_t syscall_read(int fd, void *buf, size_t count)
     if (err == EOK)
     {
         size_t read_bytes = count - uio_op.rem_bytes;
-        fd_put(file);
+        file_unref(file);
         return (sys_ret_t){read_bytes, EOK};
     }
 
-    fd_put(file);
+    file_unref(file);
     return (sys_ret_t){0, err};
 }
 
@@ -97,24 +97,24 @@ sys_ret_t syscall_seek(int fd, uint64_t offset, int whence)
     if (fd == 1 || fd == 2)
         return (sys_ret_t) {0, EOK};
 
-    file_t *file = fd_get(sys_curr_proc()->fd_table, fd);
+    file_t *file = fd_get_file(sys_curr_proc()->fd_table, fd);
     if (!file)
         return (sys_ret_t) {0, EBADF};
 
     if (!file->ops || !file->ops->seek)
     {
-        fd_put(file);
+        file_unref(file);
         return (sys_ret_t) {0, ESPIPE};
     }
 
     int err = file->ops->seek(file, (off_t)offset, whence);
     if (err != EOK)
     {
-        fd_put(file);
+        file_unref(file);
         return (sys_ret_t) {0, err};
     }
 
-    fd_put(file);
+    file_unref(file);
     return (sys_ret_t) {file->offset, EOK};
 }
 
@@ -126,13 +126,13 @@ sys_ret_t syscall_write(int fd, void *buf, size_t count)
         return (sys_ret_t) {count, EOK};
     }
 
-    file_t *file = fd_get(sys_curr_proc()->fd_table, fd);
+    file_t *file = fd_get_file(sys_curr_proc()->fd_table, fd);
     if (!file)
         return (sys_ret_t) {0, EBADF};
 
     if (!file->ops || !file->ops->write)
     {
-        fd_put(file);
+        file_unref(file);
         return (sys_ret_t) {0, EBADF};
     }
 
@@ -154,10 +154,10 @@ sys_ret_t syscall_write(int fd, void *buf, size_t count)
                                  sys_curr_thread());
     if (err == EOK)
     {
-        fd_put(file);
+        file_unref(file);
         return (sys_ret_t) {count - uio_op.rem_bytes, EOK};
     }
 
-    fd_put(file);
+    file_unref(file);
     return (sys_ret_t) {0, err};
 }

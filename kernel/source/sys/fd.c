@@ -69,11 +69,10 @@ fd_table_t *fd_table_clone(fd_table_t *parent)
     for (int i = 0; i < parent->capacity; i++)
     {
         file_t *f = parent->files[i];
+
+        child->files[i] = f;
         if (f)
-        {
             file_ref(f);
-            child->files[i] = f;
-        }
     }
 
     spinlock_release(&parent->lock);
@@ -123,7 +122,7 @@ int fd_free(fd_table_t *table, int fd)
     return true;
 }
 
-file_t *fd_get(fd_table_t *table, int fd)
+file_t *fd_get_file(fd_table_t *table, int fd)
 {
     ASSERT(table);
 
@@ -135,11 +134,4 @@ file_t *fd_get(fd_table_t *table, int fd)
 
     spinlock_release(&table->lock);
     return file;
-}
-
-void fd_put(file_t *file)
-{
-    ASSERT(file);
-
-    file_unref(file);
 }
