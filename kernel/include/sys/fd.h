@@ -32,5 +32,4 @@ fd_table_t *fd_table_clone(fd_table_t *table);
 int fd_alloc(fd_table_t *table, file_t *file, int *out_fd);
 int fd_free(fd_table_t *table, int fd);
 
-file_t *fd_get(fd_table_t *table, int fd);
-void    fd_put(file_t *file);
+file_t *fd_get_file(fd_table_t *table, int fd);
