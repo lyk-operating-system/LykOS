@@ -84,13 +84,8 @@ struct sockaddr
 
 struct socket
 {
-    socket_ops_t *ops;
-};
-
-struct socket_domain
-{
     int domain;
-    int (*create)(socket_t *so, int type, int protocol);
+    socket_ops_t *ops;
 };
 
 struct socket_ops

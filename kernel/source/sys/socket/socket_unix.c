@@ -1,3 +1,4 @@
+#include "mm/vm.h"
 #include "sys/socket.h"
 
 #include "sync/spinlock.h"
@@ -257,7 +258,7 @@ struct socket_ops unix_ops = {
 };
 
 /* Domain ops */
-int unix_domain_create(socket_t *so, int type, int protocol)
+int socket_create_unix(int type, [[maybe_unused]] int protocol, socket_t **so)
 {
     if (type != SOCK_STREAM)
         return EPROTONOSUPPORT;
@@ -266,19 +267,29 @@ int unix_domain_create(socket_t *so, int type, int protocol)
     if (!u)
         return ENOMEM;
 
+    u->so.domain = AF_UNIX;
+    u->so.ops = &unix_ops;
+
     u->type  = type;
     u->state = UNIX_STATE_INIT;
     u->peer = NULL;
-    u->buffer_len = 0;
-    u->lock = SPINLOCK_INIT;
+    memset(u->path, 0, sizeof(u->path));
     u->pending = LIST_INIT;
 
-    so->ops     = &unix_ops;
+    u->buffer = vm_alloc(4096);
+    if (!u->buffer)
+    {
+        heap_free(u);
+        return ENOMEM;
+    }
+    u->buffer_len = 4096;
+
+    u->lock = SPINLOCK_INIT;
 
     return EOK;
 }
 
-int unix_domain_destroy(socket_t *so)
+int socket_destroy_unix(socket_t *so)
 {
     if (!so) return EINVAL;
 
