@@ -290,6 +290,7 @@ int socket_create_unix(int type, [[maybe_unused]] int protocol, socket_t **so)
 
     u->lock = SPINLOCK_INIT;
 
+    *so = (socket_t *)u;
     return EOK;
 }
 

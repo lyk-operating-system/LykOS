@@ -153,7 +153,7 @@ sys_ret_t syscall_getpeername(int sockfd, struct sockaddr *addr, socklen_t lengt
         &ret, copy
     );
     file_unref(file);
-    return (sys_ret_t) {0, EOK};
+    return (sys_ret_t) {copy, EOK};
 }
 
 sys_ret_t syscall_getsockname(int sockfd, struct sockaddr *addr, socklen_t length)
@@ -185,7 +185,7 @@ sys_ret_t syscall_getsockname(int sockfd, struct sockaddr *addr, socklen_t lengt
     );
 
     file_unref(file);
-    return (sys_ret_t) {0, EOK};
+    return (sys_ret_t) {copy, EOK};
 }
 
 sys_ret_t syscall_listen(int sockfd, int backlog)
