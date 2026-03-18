@@ -1,4 +1,4 @@
-#include "fs/vfs.h"
+#include "sys/socket.h"
 #include "sys/file.h"
 #include "sys/poll.h"
 #include "sys/uio.h"
@@ -9,13 +9,83 @@ static int file_socket_read(file_t *fp, uio_op_t *uio,
                            [[maybe_unused]] int flags,
                            [[maybe_unused]] thread_t *td)
 {
-    return 0;
+    socket_t *so = fp->backend;
+    int error = 0;
+
+    for (size_t i = 0; i < uio->buf_cnt && uio->rem_bytes > 0; i++)
+    {
+        uio_op_buf_t *b = &uio->buf[i];
+
+        if (b->length == 0)
+            continue;
+
+        uint64_t to_read = b->length;
+        if (to_read > (uint64_t)uio->rem_bytes)
+            to_read = uio->rem_bytes;
+
+        uint64_t done = 0;
+
+        error = so->ops->recv(
+            so,
+            b->base,
+            to_read,
+            flags
+        );
+        if (error)
+            return error;
+
+        fp->offset     += done;
+        uio->offset    += done;
+        uio->rem_bytes -= done;
+
+        if (done < to_read)
+            break; // EOF
+    }
+
+    return EOK;
 }
 
 static int file_socket_write(file_t *fp, uio_op_t *uio,
                             [[maybe_unused]] int flags,
                             [[maybe_unused]] thread_t *td)
 {
+    socket_t *so = fp->backend;
+    int error = 0;
+
+    uint64_t offset = fp->offset;
+
+    for (size_t i = 0; i < uio->buf_cnt && uio->rem_bytes > 0; i++)
+    {
+        uio_op_buf_t *b = &uio->buf[i];
+
+        if (b->length == 0)
+            continue;
+
+        uint64_t to_write = b->length;
+        if (to_write > (uint64_t)uio->rem_bytes)
+            to_write = uio->rem_bytes;
+
+        uint64_t done = 0;
+
+        error = so->ops->send(
+            so,
+            b->base,
+            to_write,
+            flags
+        );
+        if (error)
+            return error;
+
+        offset          += done;
+        uio->offset     += done;
+        uio->rem_bytes  -= done;
+
+        if (done < to_write)
+            break;
+    }
+
+    fp->offset = offset;
+
     return 0;
 }
 
