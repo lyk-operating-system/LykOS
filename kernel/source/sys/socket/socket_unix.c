@@ -30,7 +30,7 @@ struct socket_unix
     int state;
     socket_unix_t *peer;
 
-    char path[UNIX_PATH_MAX];
+    struct sockaddr_un *addr;
 
     list_t pending;
 
@@ -81,7 +81,7 @@ static int unix_table_register(socket_unix_t *so)
     while (node)
     {
         socket_unix_t *entry = LIST_GET_CONTAINER(node, socket_unix_t, table_node);
-        if (strncmp(entry->path, so->path, UNIX_PATH_MAX) == 0)
+        if (memcmp(entry->addr, so->addr, sizeof(struct sockaddr_un)) == 0)
         {
             spinlock_release(&unix_table.slock);
             return EADDRINUSE;
@@ -95,7 +95,7 @@ static int unix_table_register(socket_unix_t *so)
     return EOK;
 }
 
-static socket_unix_t *unix_table_lookup(const char *path)
+static socket_unix_t *unix_table_lookup(const struct sockaddr_un *addr)
 {
     spinlock_acquire(&unix_table.slock);
 
@@ -104,7 +104,7 @@ static socket_unix_t *unix_table_lookup(const char *path)
     while (node)
     {
         socket_unix_t *entry = LIST_GET_CONTAINER(node, socket_unix_t, table_node);
-        if (strncmp(entry->path, path, UNIX_PATH_MAX) == 0)
+        if (memcmp(entry->addr, addr, sizeof(struct sockaddr_un)) == 0)
         {
             found = entry;
             break;
@@ -130,13 +130,17 @@ static void unix_table_unregister(socket_unix_t *so)
 int unix_accept(socket_t *server, const struct sockaddr *addr, socklen_t addr_len, int flags, socket_t **out)
 {
     socket_unix_t *server_unix = (socket_unix_t *)server;
-    if (server_unix->state != UNIX_STATE_LISTEN)
+
+    if (!server_unix->addr) // not bound
+        return EINVAL;
+
+    if (server_unix->state != UNIX_STATE_LISTEN) // not listening
         return EINVAL;
 
     if (list_is_empty(&server_unix->pending))
         return EAGAIN;
 
-
+    // TO-DO: check nonblocking
     *out = (socket_t *)LIST_GET_CONTAINER(list_pop_head(&server_unix->pending), socket_unix_t, pending_node);
 
     return EOK;
@@ -150,7 +154,8 @@ int unix_bind(socket_t *so, const struct sockaddr *addr)
     if (so_unix->state != UNIX_STATE_INIT)
         return EINVAL;
 
-    strncpy(so_unix->path, addr_un->sun_path, UNIX_PATH_MAX);
+    so_unix->addr = heap_alloc(sizeof(struct sockaddr_un));
+    memcpy(so_unix->addr, addr, sizeof(struct sockaddr_un));
 
     so_unix->state = UNIX_STATE_BOUND;
 
@@ -167,7 +172,7 @@ int unix_connect(socket_t *client, const struct sockaddr *addr)
     const struct sockaddr_un *addr_un = (const struct sockaddr_un*)addr;
     socket_unix_t *server;
 
-    server = unix_table_lookup(addr_un->sun_path);
+    server = unix_table_lookup(addr_un);
     if (!server)
         return ENOENT;
 
@@ -273,7 +278,6 @@ int socket_create_unix(int type, [[maybe_unused]] int protocol, socket_t **so)
     u->type  = type;
     u->state = UNIX_STATE_INIT;
     u->peer = NULL;
-    memset(u->path, 0, sizeof(u->path));
     u->pending = LIST_INIT;
 
     u->buffer = vm_alloc(4096);

@@ -85,6 +85,7 @@ struct sockaddr
 struct socket
 {
     int domain;
+    int flags;
     socket_ops_t *ops;
 };
 
