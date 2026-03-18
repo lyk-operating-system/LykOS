@@ -8,6 +8,7 @@
 
 typedef struct socket socket_t;
 typedef struct socket_ops socket_ops_t;
+typedef struct socket_domain socket_domain_t;
 
 /*
  * Socket types
@@ -86,9 +87,15 @@ struct socket
     socket_ops_t *ops;
 };
 
+struct socket_domain
+{
+    int domain;
+    int (*create)(socket_t *so, int type, int protocol);
+};
+
 struct socket_ops
 {
-    int     (*accept)(socket_t *server, socket_t **out);
+    int     (*accept)(socket_t *server, const struct sockaddr *addr, socklen_t addr_len, int flags, socket_t **out);
 
     int     (*bind)(socket_t *so, const struct sockaddr *addr);
     int     (*connect)(socket_t *client, const struct sockaddr *addr);

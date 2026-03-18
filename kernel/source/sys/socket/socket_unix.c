@@ -4,6 +4,7 @@
 #include "sys/file.h"
 #include "sys/socket.h"
 #include "mm/mm.h"
+#include "mm/heap.h"
 #include "utils/ref.h"
 #include "utils/string.h"
 #include "utils/list.h"
@@ -22,6 +23,8 @@ typedef struct socket_unix socket_unix_t;
 
 struct socket_unix
 {
+    socket_t so;
+
     int type;
     int state;
     socket_unix_t *peer;
@@ -38,7 +41,6 @@ struct socket_unix
 
     spinlock_t lock;
     ref_t refcount;
-
 };
 
 /*
@@ -124,41 +126,47 @@ static void unix_table_unregister(socket_unix_t *so)
  * Socket operations
  */
 
-int unix_accept(socket_unix_t *server, socket_unix_t **out)
+int unix_accept(socket_t *server, const struct sockaddr *addr, socklen_t addr_len, int flags, socket_t **out)
 {
-    if (server->state != UNIX_STATE_LISTEN)
+    socket_unix_t *server_unix = (socket_unix_t *)server;
+    if (server_unix->state != UNIX_STATE_LISTEN)
         return EINVAL;
 
-    if (list_is_empty(&server->pending))
+    if (list_is_empty(&server_unix->pending))
         return EAGAIN;
 
 
-    *out = LIST_GET_CONTAINER(list_pop_head(&server->pending), socket_unix_t, pending_node);
+    *out = (socket_t *)LIST_GET_CONTAINER(list_pop_head(&server_unix->pending), socket_unix_t, pending_node);
 
     return EOK;
 }
 
-int unix_bind(socket_unix_t *so, const struct sockaddr_un *addr)
+int unix_bind(socket_t *so, const struct sockaddr *addr)
 {
-    if (so->state != UNIX_STATE_INIT)
+    socket_unix_t *so_unix = (socket_unix_t *)so;
+    struct sockaddr_un *addr_un = (struct sockaddr_un *)addr;
+
+    if (so_unix->state != UNIX_STATE_INIT)
         return EINVAL;
 
-    strncpy(so->path, addr->sun_path, UNIX_PATH_MAX);
+    strncpy(so_unix->path, addr_un->sun_path, UNIX_PATH_MAX);
 
-    so->state = UNIX_STATE_BOUND;
+    so_unix->state = UNIX_STATE_BOUND;
 
-    int err = unix_table_register(so);
+    int err = unix_table_register(so_unix);
     if (err != EOK)
         return err;
 
     return EOK;
 }
 
-int unix_connect(socket_unix_t *client, const struct sockaddr_un *addr)
+int unix_connect(socket_t *client, const struct sockaddr *addr)
 {
+    socket_unix_t *client_unix = (socket_unix_t *)client;
+    const struct sockaddr_un *addr_un = (const struct sockaddr_un*)addr;
     socket_unix_t *server;
 
-    server = unix_table_lookup(addr->sun_path);
+    server = unix_table_lookup(addr_un->sun_path);
     if (!server)
         return ENOENT;
 
@@ -168,60 +176,63 @@ int unix_connect(socket_unix_t *client, const struct sockaddr_un *addr)
     if (server->pending.length >= UNIX_BACKLOG_MAX)
         return ECONNREFUSED;
 
-    list_append(&server->pending, &client->pending_node);
+    list_append(&server->pending, &client_unix->pending_node);
 
-    client->peer = server;
-    client->state = UNIX_STATE_CONNECTED;
+    client_unix->peer = server;
+    client_unix->state = UNIX_STATE_CONNECTED;
 
     return EOK;
 }
 
-int unix_listen(socket_unix_t *so, int backlog)
+int unix_listen(socket_t *so, int backlog)
 {
-    if (so->state != UNIX_STATE_BOUND)
+    socket_unix_t *so_unix = (socket_unix_t *)so;
+    if (so_unix->state != UNIX_STATE_BOUND)
         return EINVAL;
 
     if (backlog > UNIX_BACKLOG_MAX)
         backlog = UNIX_BACKLOG_MAX;
 
-    so->state = UNIX_STATE_LISTEN;
+    so_unix->state = UNIX_STATE_LISTEN;
 
     return EOK;
 }
 
-ssize_t unix_recv(socket_unix_t *so, void *buf, size_t len)
+ssize_t unix_recv(socket_t *so, void *buf, size_t len, int flags)
 {
-    spinlock_acquire(&so->lock);
+    socket_unix_t *so_unix = (socket_unix_t *)so;
+    spinlock_acquire(&so_unix->lock);
 
-    if (so->buffer_len == 0)
+    if (so_unix->buffer_len == 0)
     {
-        spinlock_release(&so->lock);
+        spinlock_release(&so_unix->lock);
         return EAGAIN;
     }
 
-    if (len > so->buffer_len)
-        len = so->buffer_len;
+    if (len > so_unix->buffer_len)
+        len = so_unix->buffer_len;
 
-    memcpy(buf, so->buffer, len);
+    memcpy(buf, so_unix->buffer, len);
 
     memmove(
-        so->buffer,
-        so->buffer + len,
-        so->buffer_len - len
+        so_unix->buffer,
+        so_unix->buffer + len,
+        so_unix->buffer_len - len
     );
 
-    so->buffer_len -= len;
+    so_unix->buffer_len -= len;
 
-    spinlock_release(&so->lock);
+    spinlock_release(&so_unix->lock);
     return len;
 }
 
-ssize_t unix_send(socket_unix_t *so, const void *buf, size_t len)
+ssize_t unix_send(socket_t *so, const void *buf, size_t len, int flags)
 {
-    if (!so->peer)
+    socket_unix_t *so_unix = (socket_unix_t *)so;
+    if (!so_unix->peer)
         return ENOTCONN;
 
-    socket_unix_t *peer = so->peer;
+    socket_unix_t *peer = so_unix->peer;
 
     spinlock_acquire(&peer->lock);
 
@@ -234,4 +245,36 @@ ssize_t unix_send(socket_unix_t *so, const void *buf, size_t len)
 
     spinlock_release(&peer->lock);
     return len;
+}
+
+struct socket_ops unix_ops = {
+    .accept      = unix_accept,
+    .bind        = unix_bind,
+    .connect     = unix_connect,
+    .listen      = unix_listen,
+    .recv        = unix_recv,
+    .send        = unix_send
+};
+
+/* Domain ops */
+int unix_domain_create(socket_t *so, int type, int protocol)
+{
+    if (type != SOCK_STREAM)
+        return EPROTONOSUPPORT;
+
+    socket_unix_t *u = heap_alloc(sizeof(socket_unix_t));
+    if (!u)
+        return ENOMEM;
+
+    u->type  = type;
+    u->state = UNIX_STATE_INIT;
+    u->peer = NULL;
+    u->buffer_len = 0;
+    u->lock = SPINLOCK_INIT;
+    u->pending = LIST_INIT;
+
+    so->ops     = &unix_ops;
+    // so->private = u;
+
+    return EOK;
 }
