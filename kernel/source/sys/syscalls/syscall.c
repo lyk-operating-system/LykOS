@@ -17,6 +17,16 @@ const void* syscall_table[] = {
     (void *)syscall_get_ppid,
     (void *)syscall_get_tid,
     (void *)syscall_tcb_set,
+    (void *)syscall_accept,
+    (void *)syscall_bind,
+    (void *)syscall_connect,
+    (void *)syscall_getpeername,
+    (void *)syscall_getsockname,
+    (void *)syscall_listen,
+    (void *)syscall_recv,
+    (void *)syscall_send,
+    (void *)syscall_shutdown,
+    (void *)syscall_socket
 };
 
 const uint64_t syscall_table_length = sizeof(syscall_table) / sizeof(void *);

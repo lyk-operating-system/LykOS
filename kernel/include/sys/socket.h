@@ -106,3 +106,5 @@ struct socket_ops
 };
 
 int socket_create(int domain, int type, int protocol, socket_t **so);
+
+int socket_destroy(socket_t *so);

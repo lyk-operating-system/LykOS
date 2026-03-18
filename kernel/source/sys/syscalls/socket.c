@@ -8,7 +8,7 @@
 #include "uapi/errno.h"
 #include "utils/math.h"
 
-sys_ret_t syscall_accept(int sockfd, const char *addr)
+sys_ret_t syscall_accept(int sockfd, const struct sockaddr *addr, socklen_t addr_len, int flags)
 {
     int err = EOK;
 
@@ -31,7 +31,7 @@ sys_ret_t syscall_accept(int sockfd, const char *addr)
 
     socket_t *so = file->backend;
 
-    err = so->ops->accept(so, &client);
+    err = so->ops->accept(so, addr, addr_len, flags, &client);
     if (err != EOK)
         goto fail;
 
@@ -84,11 +84,11 @@ sys_ret_t syscall_bind(int sockfd, const struct sockaddr *addr)
         goto fail;
 
     file_unref(file);
-    return (sys_ret_t){0, EOK};
+    return (sys_ret_t) {0, EOK};
 
 fail:
     if (file) file_unref(file);
-    return (sys_ret_t){0, err};
+    return (sys_ret_t) {0, err};
 }
 
 sys_ret_t syscall_connect(int sockfd, const struct sockaddr *addr)
@@ -118,11 +118,11 @@ sys_ret_t syscall_connect(int sockfd, const struct sockaddr *addr)
         goto fail;
 
     file_unref(file);
-    return (sys_ret_t){0, EOK};
+    return (sys_ret_t) {0, EOK};
 
 fail:
     if (file) file_unref(file);
-    return (sys_ret_t){0, err};
+    return (sys_ret_t) {0, err};
 }
 
 sys_ret_t syscall_getpeername(int sockfd, struct sockaddr *addr, socklen_t length)
@@ -183,6 +183,7 @@ sys_ret_t syscall_getsockname(int sockfd, struct sockaddr *addr, socklen_t lengt
         sys_curr_as(), (uintptr_t)addr,
         &ret, copy
     );
+
     file_unref(file);
     return (sys_ret_t) {0, EOK};
 }
@@ -245,17 +246,18 @@ sys_ret_t syscall_recv(int sockfd, void *buf, size_t len, int flags)
     so = file->backend;
 
     ret = so->ops->recv(so, buf, len, flags);
-    if (ret < 0) {
+    if (ret < 0)
+    {
         err = ret;
         goto fail;
     }
 
     file_unref(file);
-    return (sys_ret_t){ret, EOK};
+    return (sys_ret_t) {ret, EOK};
 
 fail:
     if (file) file_unref(file);
-    return (sys_ret_t){0, err};
+    return (sys_ret_t) {0, err};
 }
 
 sys_ret_t syscall_send(int sockfd, const void *buf, size_t len, int flags)
@@ -289,11 +291,11 @@ sys_ret_t syscall_send(int sockfd, const void *buf, size_t len, int flags)
     }
 
     file_unref(file);
-    return (sys_ret_t){ret, EOK};
+    return (sys_ret_t) {ret, EOK};
 
 fail:
     if (file) file_unref(file);
-    return (sys_ret_t){0, err};
+    return (sys_ret_t) {0, err};
 }
 
 sys_ret_t syscall_shutdown(int sockfd, int how)
@@ -339,11 +341,11 @@ sys_ret_t syscall_socket(int domain, int type, int protocol)
         goto fail;
 
     file_unref(file); // fd table owns the ref now
-    return (sys_ret_t){fd, EOK};
+    return (sys_ret_t) {fd, EOK};
 
 fail:
     if (file) file_unref(file);
     else if (so) socket_destroy(so);
 
-    return (sys_ret_t){0, err};
+    return (sys_ret_t) {0, err};
 }
