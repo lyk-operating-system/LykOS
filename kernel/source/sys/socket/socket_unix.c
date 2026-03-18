@@ -274,7 +274,23 @@ int unix_domain_create(socket_t *so, int type, int protocol)
     u->pending = LIST_INIT;
 
     so->ops     = &unix_ops;
-    // so->private = u;
+
+    return EOK;
+}
+
+int unix_domain_destroy(socket_t *so)
+{
+    if (!so) return EINVAL;
+
+    socket_unix_t *u = (socket_unix_t *)so;
+    if (u->state == UNIX_STATE_BOUND || u->state == UNIX_STATE_LISTEN)
+        unix_table_unregister(u);
+
+    u->peer = NULL;
+    u->state = UNIX_STATE_CLOSED;
+
+    heap_free(u);
+    heap_free(so);
 
     return EOK;
 }
