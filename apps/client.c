@@ -27,14 +27,7 @@ int main() {
         exit(1);
     }
 
-    write(fd, "hello\n", 6);
-
-    int n = read(fd, buf, sizeof(buf));
-    if (n > 0) {
-        write(1, buf, n); // print response
-    }
-    printf("client %d", n);
-    fflush(stdout);
+    write(fd, "hello", 5);
 
     close(fd);
     return 0;

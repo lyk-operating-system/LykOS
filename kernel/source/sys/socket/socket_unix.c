@@ -29,7 +29,6 @@ typedef struct socket_unix socket_unix_t;
 struct socket_unix
 {
     socket_t so;
-
     int type;
     int state;
     socket_unix_t *peer;
@@ -38,8 +37,11 @@ struct socket_unix
 
     list_t pending;
 
+    // Ring buffer
     void *buffer;
-    size_t buffer_len;
+    size_t capacity;
+    size_t head;
+    size_t length;
 
     list_node_t table_node; // membership in unix_table
     list_node_t pending_node; // membership in server->pending
@@ -184,7 +186,11 @@ int unix_bind(socket_t *so, const struct sockaddr *addr)
 
     int err = unix_table_register(so_unix);
     if (err != EOK)
+    {
+        heap_free(so_unix->addr);
+        so_unix->addr = NULL;
         return err;
+    }
 
     return EOK;
 }
@@ -228,56 +234,101 @@ int unix_listen(socket_t *so, int backlog)
     return EOK;
 }
 
-int unix_recv(socket_t *so, void *buf, size_t len, int flags, thread_t *t, uint64_t *recv_bytes)
+int unix_recv(socket_t *so, void *buf, size_t len, int flags,
+              thread_t *t, uint64_t *recv_bytes)
 {
-    socket_unix_t *so_unix = (socket_unix_t *)so;
-    spinlock_acquire(&so_unix->lock);
+    socket_unix_t *u = (socket_unix_t *)so;
 
-    if (so_unix->buffer_len == 0)
+    spinlock_acquire(&u->lock);
+
+    if (u->length == 0)
     {
-        spinlock_release(&so_unix->lock);
+        spinlock_release(&u->lock);
         return EAGAIN;
     }
 
-    if (len > so_unix->buffer_len)
-        len = so_unix->buffer_len;
+    if (len > u->length)
+        len = u->length;
+
+    size_t first = u->capacity - u->head;
+    if (first > len)
+        first = len;
 
     vm_addrspace_t *as = t->owner->as;
-    vm_copy_to_user(
-        as,
-        (uintptr_t) buf,
-        so_unix->buffer,
-        len
+
+    // first chunk
+    vm_copy_to_user(as,
+        (uintptr_t)buf,
+        (void *)((uintptr_t)u->buffer + u->head),
+        first
     );
-    so_unix->buffer_len -= len;
+
+    // wrap-around chunk
+    if (len > first)
+    {
+        vm_copy_to_user(as,
+            (uintptr_t)buf + first,
+            u->buffer,
+            len - first
+        );
+    }
+
+    u->head = (u->head + len) % u->capacity;
+    u->length -= len;
+
     *recv_bytes = len;
 
-    spinlock_release(&so_unix->lock);
+    spinlock_release(&u->lock);
     return EOK;
 }
 
-int unix_send(socket_t *so, const void *buf, size_t len, int flags, thread_t *t, uint64_t *sent_bytes)
+int unix_send(socket_t *so, const void *buf, size_t len, int flags,
+              thread_t *t, uint64_t *sent_bytes)
 {
-    socket_unix_t *so_unix = (socket_unix_t *)so;
-    if (!so_unix->peer)
+    socket_unix_t *u = (socket_unix_t *)so;
+    if (!u->peer)
         return ENOTCONN;
 
-    socket_unix_t *peer = so_unix->peer;
+    socket_unix_t *peer = u->peer;
 
     spinlock_acquire(&peer->lock);
 
-    size_t space = sizeof(peer->buffer) - peer->buffer_len;
+    size_t space = peer->capacity - peer->length;
+    if (space == 0)
+    {
+        spinlock_release(&peer->lock);
+        return EAGAIN;
+    }
+
     if (len > space)
         len = space;
 
+    size_t tail = (peer->head + peer->length) % peer->capacity;
+
+    size_t first = peer->capacity - tail;
+    if (first > len)
+        first = len;
+
     vm_addrspace_t *as = t->owner->as;
-    vm_copy_from_user(
-        as,
-        peer->buffer,
-        (uintptr_t) buf,
-        len
+
+    // first chunk
+    vm_copy_from_user(as,
+        (void *)((uintptr_t)peer->buffer + tail),
+        (uintptr_t)buf,
+        first
     );
-    peer->buffer_len += len;
+
+    // wrap-around chunk
+    if (len > first)
+    {
+        vm_copy_from_user(as,
+            peer->buffer,
+            (uintptr_t)buf + first,
+            len - first
+        );
+    }
+
+    peer->length += len;
     *sent_bytes = len;
 
     spinlock_release(&peer->lock);
@@ -306,23 +357,32 @@ int socket_create_unix(int type, [[maybe_unused]] int protocol, socket_t **so)
     if (!u)
         return ENOMEM;
 
-    u->so.domain = AF_UNIX;
-    u->so.ops = &unix_ops;
-
-    u->type  = type;
-    u->state = UNIX_STATE_INIT;
-    u->peer = NULL;
-    u->pending = LIST_INIT;
-
-    u->buffer = vm_alloc(4096);
-    if (!u->buffer)
+    void *buffer = vm_alloc(4096);
+    if (!buffer)
     {
         heap_free(u);
         return ENOMEM;
     }
-    u->buffer_len = 01;
 
-    u->lock = SPINLOCK_INIT;
+    *u = (socket_unix_t) {
+        .so = {
+            .domain = AF_UNIX,
+            .ops = &unix_ops,
+        },
+        .type     = type,
+        .state    = UNIX_STATE_INIT,
+        .peer     = NULL,
+        .addr     = NULL,
+        .pending  = LIST_INIT,
+
+        .buffer   = buffer,
+        .capacity = 4096,
+        .head     = 0,
+        .length   = 0,
+
+        .lock     = SPINLOCK_INIT,
+        .refcount = 1
+    };
 
     *so = (socket_t *)u;
     return EOK;
@@ -330,17 +390,35 @@ int socket_create_unix(int type, [[maybe_unused]] int protocol, socket_t **so)
 
 int socket_destroy_unix(socket_t *so)
 {
-    if (!so)
-        return EINVAL;
-
     socket_unix_t *u = (socket_unix_t *)so;
-    if (u->state == UNIX_STATE_BOUND || u->state == UNIX_STATE_LISTEN)
-        unix_table_unregister(u);
 
-    u->peer = NULL;
+    // unregister if it was ever bound
+    if (u->addr)
+    {
+        unix_table_unregister(u);
+        heap_free(u->addr);
+        u->addr = NULL;
+    }
+
+    if (u->buffer)
+    {
+        vm_free(u->buffer);
+        u->buffer = NULL;
+    }
+
+    // break peer linkage
+    if (u->peer)
+    {
+        spinlock_acquire(&u->peer->lock);
+        if (u->peer->peer == u)
+            u->peer->peer = NULL;
+        spinlock_release(&u->peer->lock);
+
+        u->peer = NULL;
+    }
+
     u->state = UNIX_STATE_CLOSED;
 
     heap_free(u);
-
     return EOK;
 }

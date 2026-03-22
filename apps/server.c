@@ -39,11 +39,11 @@ int main() {
     }
 
     int n = read(cfd, buf, sizeof(buf));
-    if (n > 0) {
-        write(1, buf, n);        // print to stdout
-        write(cfd, "ok\n", 3);   // reply
+    if (n > 0)
+    {
+        write(cfd, "ok", 2);     // reply
     }
-    printf("server %d", n);
+    printf("server %d %s", n, buf);
     fflush(stdout);
 
     close(cfd);

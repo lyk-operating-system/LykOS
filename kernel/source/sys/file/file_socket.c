@@ -7,7 +7,7 @@
 
 static int file_socket_read(file_t *fp, uio_op_t *uio,
                            [[maybe_unused]] int flags,
-                           [[maybe_unused]] thread_t *t)
+                           thread_t *t)
 {
     socket_t *so = fp->backend;
     int error = 0;
@@ -48,7 +48,7 @@ static int file_socket_read(file_t *fp, uio_op_t *uio,
 
 static int file_socket_write(file_t *fp, uio_op_t *uio,
                             [[maybe_unused]] int flags,
-                            [[maybe_unused]] thread_t *t)
+                            thread_t *t)
 {
     socket_t *so = fp->backend;
     int error = 0;
