@@ -4,13 +4,13 @@
 
 int main(void)
 {
-    int ret = mkdir("testdir", 0755);
-    if (ret < 0)
-    {
-        perror("mkdir");
-        return 1;
-    }
+    // int ret = mkdir("testdir", 0755);
+    // if (ret < 0)
+    // {
+    //     perror("mkdir");
+    //     return 1;
+    // }
 
-    puts("mkdir succeeded");
+    puts("Hello, world!");
     return 0;
 }

@@ -81,6 +81,28 @@ static void load_init_proc()
         sched_enqueue(LIST_GET_CONTAINER(init_proc->threads.head, thread_t, proc_thread_list_node));
     else
         panic("Failed to load init process!");
+
+    vnode_t *server_elf_file;
+    if (vfs_lookup("/boot/server", &server_elf_file) != EOK
+    ||  server_elf_file->type != VREG)
+        panic("Server process not found!");
+
+    proc_t *server_proc = init_load(server_elf_file);
+    if (server_proc)
+        sched_enqueue(LIST_GET_CONTAINER(server_proc->threads.head, thread_t, proc_thread_list_node));
+    else
+        panic("Failed to load server process!");
+
+    vnode_t *client_elf_file;
+    if (vfs_lookup("/boot/client", &client_elf_file) != EOK
+    ||  client_elf_file->type != VREG)
+        panic("Client process not found!");
+
+    proc_t *client_proc = init_load(client_elf_file);
+    if (client_proc)
+        sched_enqueue(LIST_GET_CONTAINER(client_proc->threads.head, thread_t, proc_thread_list_node));
+    else
+        panic("Failed to load client process!");
 }
 
 
