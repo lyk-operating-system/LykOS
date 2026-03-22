@@ -7,6 +7,7 @@
 #include "sys/syscall.h"
 #include "uapi/errno.h"
 #include "utils/math.h"
+#include <stdint.h>
 
 sys_ret_t syscall_accept(int sockfd, const struct sockaddr *addr, socklen_t addr_len, int flags)
 {
@@ -249,7 +250,8 @@ sys_ret_t syscall_recv(int sockfd, void *buf, size_t len, int flags)
 
     so = file->backend;
 
-    ret = so->ops->recv(so, buf, len, flags, sys_curr_thread());
+    uint64_t recv_bytes = 0;
+    ret = so->ops->recv(so, buf, len, flags, sys_curr_thread(), &recv_bytes);
     if (ret != EOK)
     {
         err = ret;
@@ -257,7 +259,7 @@ sys_ret_t syscall_recv(int sockfd, void *buf, size_t len, int flags)
     }
 
     file_unref(file);
-    return (sys_ret_t) {len, EOK};
+    return (sys_ret_t) {recv_bytes, EOK};
 
 fail:
     if (file) file_unref(file);
@@ -287,7 +289,8 @@ sys_ret_t syscall_send(int sockfd, const void *buf, size_t len, int flags)
 
     so = file->backend;
 
-    ret = so->ops->send(so, buf, len, flags, sys_curr_thread());
+    uint64_t sent_bytes = 0;
+    ret = so->ops->send(so, buf, len, flags, sys_curr_thread(), &sent_bytes);
     if (ret != EOK)
     {
         err = ret;
@@ -295,7 +298,7 @@ sys_ret_t syscall_send(int sockfd, const void *buf, size_t len, int flags)
     }
 
     file_unref(file);
-    return (sys_ret_t) {len, EOK};
+    return (sys_ret_t) {sent_bytes, EOK};
 
 fail:
     if (file) file_unref(file);

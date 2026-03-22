@@ -23,23 +23,23 @@ static int file_socket_read(file_t *fp, uio_op_t *uio,
         if (to_read > (uint64_t)uio->rem_bytes)
             to_read = uio->rem_bytes;
 
-        uint64_t done = 0;
-
+        uint64_t recv_bytes = 0;
         error = so->ops->recv(
             so,
             b->base,
             to_read,
             flags,
-            t
+            t,
+            &recv_bytes
         );
         if (error)
             return error;
 
-        fp->offset     += done;
-        uio->offset    += done;
-        uio->rem_bytes -= done;
+        fp->offset     += recv_bytes;
+        uio->offset    += recv_bytes;
+        uio->rem_bytes -= recv_bytes;
 
-        if (done < to_read)
+        if (recv_bytes < to_read)
             break; // EOF
     }
 
@@ -66,23 +66,23 @@ static int file_socket_write(file_t *fp, uio_op_t *uio,
         if (to_write > (uint64_t)uio->rem_bytes)
             to_write = uio->rem_bytes;
 
-        uint64_t done = 0;
-
+        uint64_t sent_bytes = 0;
         error = so->ops->send(
             so,
             b->base,
             to_write,
             flags,
-            t
+            t,
+            &sent_bytes
         );
         if (error)
             return error;
 
-        offset          += done;
-        uio->offset     += done;
-        uio->rem_bytes  -= done;
+        offset          += sent_bytes;
+        uio->offset     += sent_bytes;
+        uio->rem_bytes  -= sent_bytes;
 
-        if (done < to_write)
+        if (sent_bytes < to_write)
             break;
     }
 
