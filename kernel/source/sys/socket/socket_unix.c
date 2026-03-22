@@ -13,6 +13,7 @@
 #include "utils/list.h"
 #include "utils/ref.h"
 #include "utils/string.h"
+#include <stdint.h>
 
 #define UNIX_PATH_MAX       256
 #define UNIX_BACKLOG_MAX    32
@@ -227,7 +228,7 @@ int unix_listen(socket_t *so, int backlog)
     return EOK;
 }
 
-ssize_t unix_recv(socket_t *so, void *buf, size_t len, int flags, thread_t *t)
+int unix_recv(socket_t *so, void *buf, size_t len, int flags, thread_t *t, uint64_t *recv_bytes)
 {
     socket_unix_t *so_unix = (socket_unix_t *)so;
     spinlock_acquire(&so_unix->lock);
@@ -249,12 +250,13 @@ ssize_t unix_recv(socket_t *so, void *buf, size_t len, int flags, thread_t *t)
         len
     );
     so_unix->buffer_len -= len;
+    *recv_bytes = len;
 
     spinlock_release(&so_unix->lock);
     return EOK;
 }
 
-ssize_t unix_send(socket_t *so, const void *buf, size_t len, int flags, thread_t *t)
+int unix_send(socket_t *so, const void *buf, size_t len, int flags, thread_t *t, uint64_t *sent_bytes)
 {
     socket_unix_t *so_unix = (socket_unix_t *)so;
     if (!so_unix->peer)
@@ -276,6 +278,7 @@ ssize_t unix_send(socket_t *so, const void *buf, size_t len, int flags, thread_t
         len
     );
     peer->buffer_len += len;
+    *sent_bytes = len;
 
     spinlock_release(&peer->lock);
     return EOK;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sys/types.h"
+#include <stdint.h>
 
 /*
  * Forward declarations
@@ -101,8 +102,8 @@ struct socket_ops
     int     (*getsockname)(socket_t *so, struct sockaddr *addr);
     int     (*getpeername)(socket_t *so, struct sockaddr *addr);
 
-    ssize_t (*recv)(socket_t *so, void *buf, size_t len, int flags, thread_t *t);
-    ssize_t (*send)(socket_t *so, const void *buf, size_t len, int flags, thread_t *t);
+    int (*recv)(socket_t *so, void *buf, size_t len, int flags, thread_t *t, uint64_t *recv_bytes);
+    int (*send)(socket_t *so, const void *buf, size_t len, int flags, thread_t *t, uint64_t *sent_bytes);
 
     int     (*shutdown)(socket_t *so, int how);
 };
