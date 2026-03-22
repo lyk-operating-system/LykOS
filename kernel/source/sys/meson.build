@@ -1,4 +1,5 @@
 subdir('file')
+subdir('socket')
 subdir('syscalls')
 
 c_files += files(

@@ -4,5 +4,6 @@ c_files += files(
     'memory.c',
     'misc.c',
     'proc.c',
+    'socket.c',
     'syscall.c',
 )

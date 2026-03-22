@@ -6,6 +6,7 @@
  * Forward declarations
  */
 
+typedef struct thread thread_t;
 typedef struct socket socket_t;
 typedef struct socket_ops socket_ops_t;
 typedef struct socket_domain socket_domain_t;
@@ -100,8 +101,8 @@ struct socket_ops
     int     (*getsockname)(socket_t *so, struct sockaddr *addr);
     int     (*getpeername)(socket_t *so, struct sockaddr *addr);
 
-    ssize_t (*recv)(socket_t *so, void *buf, size_t len, int flags);
-    ssize_t (*send)(socket_t *so, const void *buf, size_t len, int flags);
+    ssize_t (*recv)(socket_t *so, void *buf, size_t len, int flags, thread_t *t);
+    ssize_t (*send)(socket_t *so, const void *buf, size_t len, int flags, thread_t *t);
 
     int     (*shutdown)(socket_t *so, int how);
 };

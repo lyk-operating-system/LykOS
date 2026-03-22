@@ -56,8 +56,8 @@ file_t *file_create_socket([[maybe_unused]] socket_t *so,
     ASSERT(so);
 
     file_t *f = file_alloc(
-        FILE_TYPE_VNODE,
-        &file_vnode_ops,
+        FILE_TYPE_SOCKET,
+        &file_socket_ops,
         so,
         flags
     );

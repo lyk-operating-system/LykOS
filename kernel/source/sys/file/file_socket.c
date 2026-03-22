@@ -7,7 +7,7 @@
 
 static int file_socket_read(file_t *fp, uio_op_t *uio,
                            [[maybe_unused]] int flags,
-                           [[maybe_unused]] thread_t *td)
+                           [[maybe_unused]] thread_t *t)
 {
     socket_t *so = fp->backend;
     int error = 0;
@@ -29,7 +29,8 @@ static int file_socket_read(file_t *fp, uio_op_t *uio,
             so,
             b->base,
             to_read,
-            flags
+            flags,
+            t
         );
         if (error)
             return error;
@@ -47,7 +48,7 @@ static int file_socket_read(file_t *fp, uio_op_t *uio,
 
 static int file_socket_write(file_t *fp, uio_op_t *uio,
                             [[maybe_unused]] int flags,
-                            [[maybe_unused]] thread_t *td)
+                            [[maybe_unused]] thread_t *t)
 {
     socket_t *so = fp->backend;
     int error = 0;
@@ -71,7 +72,8 @@ static int file_socket_write(file_t *fp, uio_op_t *uio,
             so,
             b->base,
             to_write,
-            flags
+            flags,
+            t
         );
         if (error)
             return error;
@@ -89,27 +91,27 @@ static int file_socket_write(file_t *fp, uio_op_t *uio,
     return 0;
 }
 
-static int file_socket_ioctl(file_t *fp, int cmd, void *data, [[maybe_unused]] thread_t *td)
+static int file_socket_ioctl(file_t *fp, int cmd, void *data, [[maybe_unused]] thread_t *t)
 {
     return 0;
 }
 
 static int file_socket_poll([[maybe_unused]] file_t *fp, int events,
-                           [[maybe_unused]] thread_t *td)
+                           [[maybe_unused]] thread_t *t)
 {
     return 0;
 }
 
 static int file_socket_truncate([[maybe_unused]] file_t *fp,
                                [[maybe_unused]] off_t length,
-                               [[maybe_unused]] thread_t *td)
+                               [[maybe_unused]] thread_t *t)
 {
     return 0;
 }
 
 static int file_socket_chmod([[maybe_unused]] file_t *fp,
                             [[maybe_unused]] mode_t mode,
-                            [[maybe_unused]] thread_t *td)
+                            [[maybe_unused]] thread_t *t)
 {
     return 0;
 }
@@ -117,7 +119,7 @@ static int file_socket_chmod([[maybe_unused]] file_t *fp,
 static int file_socket_chown([[maybe_unused]] file_t *fp,
                             [[maybe_unused]] uid_t uid,
                             [[maybe_unused]] gid_t gid,
-                            [[maybe_unused]] thread_t *td)
+                            [[maybe_unused]] thread_t *t)
 {
     return 0;
 }
@@ -127,7 +129,7 @@ static int file_socket_seek(file_t *fp, off_t offset, int whence)
     return 0;
 }
 
-static int file_socket_close(file_t *fp, [[maybe_unused]] thread_t *td)
+static int file_socket_close(file_t *fp, [[maybe_unused]] thread_t *t)
 {
     return 0;
 }

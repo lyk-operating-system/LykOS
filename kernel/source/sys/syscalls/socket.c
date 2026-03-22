@@ -33,7 +33,10 @@ sys_ret_t syscall_accept(int sockfd, const struct sockaddr *addr, socklen_t addr
 
     err = so->ops->accept(so, addr, addr_len, flags, &client);
     if (err != EOK)
+    {
+        log(LOG_WARN, "A");
         goto fail;
+    }
 
     new_file = file_create_socket(client, 0);
     if (!new_file)
@@ -52,6 +55,7 @@ sys_ret_t syscall_accept(int sockfd, const struct sockaddr *addr, socklen_t addr
     return (sys_ret_t) {fd, EOK};
 
 fail:
+    log(LOG_WARN, "accept err %d", err);
     if (new_file) file_unref(new_file);
     if (file) file_unref(file);
     return (sys_ret_t) {0, err};
@@ -245,15 +249,15 @@ sys_ret_t syscall_recv(int sockfd, void *buf, size_t len, int flags)
 
     so = file->backend;
 
-    ret = so->ops->recv(so, buf, len, flags);
-    if (ret < 0)
+    ret = so->ops->recv(so, buf, len, flags, sys_curr_thread());
+    if (ret != EOK)
     {
         err = ret;
         goto fail;
     }
 
     file_unref(file);
-    return (sys_ret_t) {ret, EOK};
+    return (sys_ret_t) {len, EOK};
 
 fail:
     if (file) file_unref(file);
@@ -283,15 +287,15 @@ sys_ret_t syscall_send(int sockfd, const void *buf, size_t len, int flags)
 
     so = file->backend;
 
-    ret = so->ops->send(so, buf, len, flags);
-    if (ret < 0)
+    ret = so->ops->send(so, buf, len, flags, sys_curr_thread());
+    if (ret != EOK)
     {
         err = ret;
         goto fail;
     }
 
     file_unref(file);
-    return (sys_ret_t) {ret, EOK};
+    return (sys_ret_t) {len, EOK};
 
 fail:
     if (file) file_unref(file);
