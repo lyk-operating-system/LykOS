@@ -7,13 +7,9 @@ source/libx11 {
 package/libx11 {
     dependencies: [
         source/libx11
-
-        image/meson image/ninja
-        tool/xgcc tool/xbinutils tool/pkgconf
-
-        package/xorgproto
-        package/xtrans
-        package/libxcb
+        image/meson
+        tool/gcc tool/binutils tool/pkgconf
+        package/xorgproto package/xtrans package/libxcb
     ]
 
     configure: <sh>

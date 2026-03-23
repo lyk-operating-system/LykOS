@@ -6,17 +6,14 @@ source/xorgproto {
 
 package/xorgproto {
     dependencies: [
-        source/xorgproto
-
-        image/meson image/ninja
-        tool/xgcc tool/xbinutils tool/pkgconf
-
-        package/base
+        source/support source/xorgproto
+        image/meson
+        tool/gcc tool/binutils tool/pkgconf
     ]
 
     configure: <sh>
         meson setup \
-            --cross-file=$SOURCES_DIR/util/crossfile \
+            --cross-file $SOURCES_DIR/support/cross-files/lykos-x86_64.ini \
             --prefix=$PREFIX \
             -Dlegacy=true \
             $SOURCES_DIR/xorgproto

@@ -7,11 +7,8 @@ source/xcb-proto {
 package/xcb-proto {
     dependencies: [
         source/xcb-proto
-
         image/python3
-        tool/xgcc tool/xbinutils
-
-        package/base
+        tool/gcc tool/binutils
     ]
 
     configure: <sh>
