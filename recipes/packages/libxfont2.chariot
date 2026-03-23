@@ -1,0 +1,36 @@
+source/libxfont2 {
+    url: "https://www.x.org/archive/individual/lib/libXfont2-2.0.6.tar.gz"
+    type: "tar.gz"
+    b2sum: "1a871c6d7c81beadf1c9a5e864a2df186b6429337e86f4fee0c8969d158cf284f10019f69a2f7e0c9298d9f6fa842d5315932152b5e70cb068c5530360e578a0"
+}
+
+package/libxfont2 {
+    dependencies: [
+        source/libxfont2
+
+        image/meson image/ninja
+        tool/xgcc tool/xbinutils tool/pkgconf
+
+        package/base
+        package/xorgproto
+        package/freetype
+        package/zlib
+        package/xtrans
+        package/libfontenc
+    ]
+
+    configure: <sh>
+        $SOURCES_DIR/libxfont2/configure \
+            --prefix=$PREFIX \
+            --host=x86_64-lykos \
+            --disable-malloc0returnsnull
+    </sh>
+
+    build: <sh>
+        make -j$PARALLELISM
+    </sh>
+
+    install: <sh>
+        DESTDIR=$INSTALL_DIR make install
+    </sh>
+}

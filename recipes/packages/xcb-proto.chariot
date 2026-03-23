@@ -1,0 +1,31 @@
+source/xcb-proto {
+    url: "https://xorg.freedesktop.org/archive/individual/proto/xcb-proto-1.15.2.tar.gz"
+    type: "tar.gz"
+    b2sum: "35f06fe67ce16c002b683a4df0c98f459032c29e7be12daed126b4438cb83d7a6834f92102bf78806af7156fd6c3c24cd51dff1126313179bc042c270f03fd49"
+}
+
+package/xcb-proto {
+    dependencies: [
+        source/xcb-proto
+
+        image/python3
+        tool/xgcc tool/xbinutils
+
+        package/base
+    ]
+
+    configure: <sh>
+        PYTHON=python3 \
+        $SOURCES_DIR/xcb-proto/configure \
+            --host=x86_64-lykos \
+            --prefix=$PREFIX
+    </sh>
+
+    build: <sh>
+        make -j$PARALLELISM
+    </sh>
+
+    install: <sh>
+        make install DESTDIR=$INSTALL_DIR
+    </sh>
+}
