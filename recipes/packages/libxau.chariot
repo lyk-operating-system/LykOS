@@ -1,0 +1,33 @@
+source/libxau {
+    url: "https://www.x.org/pub/individual/lib/libXau-1.0.12.tar.xz"
+    type: "tar.xz"
+    b2sum: "739c1ed5cc86eaf6116bb324808e442ee485fb81bc882f873d924302494e93c3eae1a2ad3f92e115faf72e647578e7b9501c73ac18db1839edc2fb69a143a834"
+    dependencies: [
+        tool/autoconf tool/automake tool/libtool tool/pkgconf tool/util-macros tool/xorgproto
+    ]
+    regenerate: <sh>
+        autoreconf -fvi
+    </sh>
+}
+
+package/libxau {
+    dependencies: [
+        source/libxau
+        tool/gcc tool/binutils tool/pkgconf
+        package/xorgproto
+    ]
+
+    configure: <sh>
+        $SOURCES_DIR/libxau/configure \
+            --prefix=$PREFIX \
+            --host=x86_64-lykos
+    </sh>
+
+    build: <sh>
+        make -j$PARALLELISM
+    </sh>
+
+    install: <sh>
+        DESTDIR=$INSTALL_DIR make install
+    </sh>
+}

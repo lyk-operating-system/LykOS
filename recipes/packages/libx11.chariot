@@ -8,8 +8,8 @@ package/libx11 {
     dependencies: [
         source/libx11
         image/meson
-        tool/gcc tool/binutils tool/pkgconf
-        package/xorgproto package/xtrans package/libxcb
+        tool/gcc tool/binutils tool/pkgconf tool/xorgproto
+        package/xtrans package/libxcb
     ]
 
     configure: <sh>

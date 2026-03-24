@@ -1,4 +1,10 @@
-package/xorgproto {
+source/xorgproto {
+    url: "https://xorg.freedesktop.org/archive/individual/proto/xorgproto-2022.2.tar.gz"
+    type: "tar.gz"
+    b2sum: "826e391a55ffe56b43009c677610be316ec50813511d15f90ed03a24f603d5cb27ec671fbd1246ea15b32ba42b8202f51427302d7369be444ee9d3da741717ba"
+}
+
+tool/xorgproto {
     dependencies: [
         source/support source/xorgproto
         image/meson
