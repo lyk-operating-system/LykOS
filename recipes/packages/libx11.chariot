@@ -13,13 +13,14 @@ source/libx11 {
 package/libx11 {
     dependencies: [
         source/libx11
-        image/meson
-        tool/gcc tool/binutils tool/pkgconf tool/util-macros
+        image/gcc image/meson
+        tool/gcc tool/binutils tool/libtool tool/pkgconf tool/util-macros tool/autoconf tool/automake
         package/libxcb package/xtrans package/xorgproto package/libxau package/libpthread-stubs
     ]
 
     configure: <sh>
         $SOURCES_DIR/libx11/configure \
+            --with-sysroot=$SYSROOT_DIR \
             --prefix=$PREFIX \
             --host=x86_64-lykos \
             --disable-malloc0returnsnull

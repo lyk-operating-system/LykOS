@@ -108,7 +108,8 @@ tool/libtool {
         tool/autoconf tool/automake
     ]
     configure: <sh>
-        $SOURCES_DIR/libtool/configure --prefix=$PREFIX
+        $SOURCES_DIR/libtool/configure \
+            --prefix=$PREFIX
     </sh>
     build: <sh>
         make -j$PARALLELISM
