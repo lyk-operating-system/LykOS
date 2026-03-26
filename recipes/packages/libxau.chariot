@@ -1,7 +1,7 @@
 source/libxau {
-    url: "https://www.x.org/pub/individual/lib/libXau-1.0.12.tar.xz"
-    type: "tar.xz"
-    b2sum: "739c1ed5cc86eaf6116bb324808e442ee485fb81bc882f873d924302494e93c3eae1a2ad3f92e115faf72e647578e7b9501c73ac18db1839edc2fb69a143a834"
+    url: "https://www.x.org/pub/individual/lib/libXau-1.0.9.tar.gz"
+    type: "tar.gz"
+    b2sum: "76dec75e8460cd834f34aa4bba68408d6d54d3452b895ce2e5760f717d28f96fa289a1ec9f03f97ac74b581b9a4d43bbb41a8ea5fcddf2f1a99a4b61ac209e2e"
     dependencies: [
         tool/autoconf tool/automake tool/libtool tool/pkgconf tool/util-macros tool/xorgproto
     ]
