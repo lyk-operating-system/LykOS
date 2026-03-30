@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-#define LAPIC_TIMER_VECTOR 32
+#define LAPIC_TIMER_VECTOR 33
 
 void x86_64_lapic_send_eoi();
 

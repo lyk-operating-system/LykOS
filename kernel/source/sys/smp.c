@@ -21,6 +21,7 @@ static spinlock_t slock;
 
     arch_lcpu_thread_reg_write((size_t)mp_info->extra_argument);
     arch_lcpu_init();
+    sched_init_cpu();
     log(LOG_INFO, "CPU #%02d initialized. Idling...", ((thread_t *)mp_info->extra_argument)->assigned_cpu->id);
 
     spinlock_release(&slock);

@@ -4,6 +4,7 @@
 //
 #include "arch/x86_64/devices/pit.h"
 #include "arch/x86_64/msr.h"
+#include "assert.h"
 #include "hhdm.h"
 #include "log.h"
 #include "panic.h"
@@ -49,10 +50,13 @@ void arch_timer_stop()
 
 void arch_timer_oneshot(size_t us)
 {
+    uint64_t ticks = us * g_lapic_timer_freq / 1'000'000;
+    ASSERT(ticks <= UINT32_MAX);
+
     lapic_write(REG_TIMER_LVT, MASK);
     lapic_write(REG_TIMER_LVT, ONE_SHOOT | LAPIC_TIMER_VECTOR);
     lapic_write(REG_TIMER_DIV, 0);
-    lapic_write(REG_TIMER_INITIAL_COUNT, us * g_lapic_timer_freq / 1'000'000);
+    lapic_write(REG_TIMER_INITIAL_COUNT, ticks);
 }
 
 // lapic.h

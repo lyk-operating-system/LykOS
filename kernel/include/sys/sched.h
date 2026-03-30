@@ -8,5 +8,7 @@ uint32_t sched_get_curr_cpuid();
 
 void sched_enqueue(thread_t *t);
 
-void sched_preemt();
+void sched_preempt();
 void sched_yield(thread_status_t status);
+
+void sched_init_cpu();

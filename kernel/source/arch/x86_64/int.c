@@ -164,7 +164,7 @@ void arch_timer_set_handler_per_cpu(void (*handler)())
     arch_timer_handler = handler;
 }
 
-static_assert(LAPIC_TIMER_VECTOR == 32);
+static_assert(LAPIC_TIMER_VECTOR == 33);
 
 void arch_int_handler(cpu_state_t *cpu_state)
 {
@@ -186,6 +186,8 @@ void arch_int_handler(cpu_state_t *cpu_state)
 
             if (!vm_page_fault(sched_get_curr_thread()->owner->as, cr2, fault_type))
                 panic("Unhandled user page fault at %p (err=%#llx)", cr2, cpu_state->err_code);
+
+            x86_64_lapic_send_eoi();
         }
         else
             panic("CPU EXCEPTION: %llx %#llx", cpu_state->int_no, cpu_state->err_code);
@@ -194,6 +196,7 @@ void arch_int_handler(cpu_state_t *cpu_state)
     {
         if (cpu_state->int_no == LAPIC_TIMER_VECTOR)
         {
+            x86_64_lapic_send_eoi();
             arch_timer_handler();
         }
         else
@@ -208,8 +211,8 @@ void arch_int_handler(cpu_state_t *cpu_state)
 
             if (!handler || !handler(NULL, NULL))
                 panic("Unhandled vector %d", cpu_state->int_no);
+
+            x86_64_lapic_send_eoi();
         }
     }
-
-    x86_64_lapic_send_eoi();
 }

@@ -27,11 +27,13 @@ struct thread
     uint32_t tid;
     proc_t *owner;
 
-    size_t priority;
     thread_status_t status;
+    cpu_t *assigned_cpu;
+
+    unsigned priority;
     uint64_t last_ran;
     uint64_t sleep_until;
-    cpu_t *assigned_cpu;
+    uint64_t last_boost;
 
     list_node_t proc_thread_list_node;
     list_node_t sched_thread_list_node;
