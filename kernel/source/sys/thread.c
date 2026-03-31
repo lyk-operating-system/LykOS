@@ -17,11 +17,16 @@ static inline uint32_t new_tid()
     return ret;
 }
 
-thread_t *thread_create(proc_t *proc, uintptr_t entry, size_t stack_size, char **argv, char **envp)
+int thread_create(proc_t *proc, uintptr_t entry, size_t stack_size, char **argv, char **envp, thread_t **out_thread)
 {
+    int err = EOK;
+
     thread_t *thread = heap_alloc(sizeof(thread_t));
     if (!thread)
+    {
+        err = ENOMEM;
         goto fail;
+    }
     thread->tid = new_tid();
     thread->owner = proc;
     thread->priority = 0;
@@ -33,7 +38,7 @@ thread_t *thread_create(proc_t *proc, uintptr_t entry, size_t stack_size, char *
     thread->sched_thread_list_node = LIST_NODE_INIT;
     thread->slock = SPINLOCK_INIT;
     thread->ref_count = 1;
-    int err = arch_thread_context_init(&thread->context, proc->as, proc->user,
+    err = arch_thread_context_init(&thread->context, proc->as, proc->user,
                                        entry, stack_size, argv, envp);
     if (err != EOK)
         goto fail;
@@ -42,11 +47,14 @@ thread_t *thread_create(proc_t *proc, uintptr_t entry, size_t stack_size, char *
     list_append(&proc->threads, &thread->proc_thread_list_node);
     spinlock_release(&proc->slock);
 
-    return thread;
+    if (out_thread)
+        *out_thread = thread;
+    return EOK;
 
 fail:
     if (thread) heap_free(thread);
-    return NULL;
+    if (out_thread) *out_thread = NULL;
+    return err;
 }
 
 void thread_destroy(thread_t *thread)
