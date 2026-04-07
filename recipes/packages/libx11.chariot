@@ -1,0 +1,36 @@
+source/libx11 {
+    url: "https://www.x.org/archive/individual/lib/libX11-1.8.1.tar.gz"
+    type: "tar.gz"
+    b2sum: "12a7a170288b0ed1be6bcf7738b5c8be0280c05c7866f10718eeb87c71b63825f3b402898f0fffc2c3deb5ec5e9df67a98032a49ae45ae8fc0874488f437a689"
+    dependencies: [
+        tool/autoconf tool/automake tool/libtool tool/pkgconf tool/util-macros tool/xorgproto tool/xtrans
+    ]
+    regenerate: <sh>
+        autoreconf -fvi
+    </sh>
+}
+
+package/libx11 {
+    dependencies: [
+        source/libx11
+        image/gcc image/meson
+        tool/gcc tool/binutils tool/libtool tool/pkgconf tool/util-macros tool/autoconf tool/automake
+        package/libxcb package/xtrans package/xorgproto package/libxau package/libpthread-stubs
+    ]
+
+    configure: <sh>
+        $SOURCES_DIR/libx11/configure \
+            --with-sysroot=$SYSROOT_DIR \
+            --prefix=$PREFIX \
+            --host=x86_64-lykos \
+            --disable-malloc0returnsnull
+    </sh>
+
+    build: <sh>
+        make -j$PARALLELISM
+    </sh>
+
+    install: <sh>
+        DESTDIR=$INSTALL_DIR make install
+    </sh>
+}
