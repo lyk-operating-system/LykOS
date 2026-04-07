@@ -59,6 +59,15 @@ int vm_map(vm_addrspace_t *as, uintptr_t vaddr, size_t length,
            vm_protection_t prot, int flags,
            vm_object_t *obj, size_t offset,
            uintptr_t *out);
+
+int vm_map_phys(vm_addrspace_t *as,
+                uintptr_t vaddr, uintptr_t paddr,
+                size_t length,
+                vm_protection_t prot,
+                vm_cache_t cache,
+                int flags,
+                uintptr_t *out);
+
 int vm_unmap(vm_addrspace_t *as, uintptr_t vaddr, size_t length);
 
 // Memory allocation

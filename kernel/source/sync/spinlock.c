@@ -1,9 +1,12 @@
 #include "sync/spinlock.h"
 
 #include "arch/lcpu.h"
+#include "panic.h"
 
 void spinlock_acquire(volatile spinlock_t *slock)
 {
+    volatile size_t deadlock_cnt = 0;
+
     while (true)
     {
         if (!__atomic_test_and_set(&slock->lock, __ATOMIC_ACQUIRE))
@@ -14,7 +17,11 @@ void spinlock_acquire(volatile spinlock_t *slock)
         }
 
         while (__atomic_load_n(&slock->lock, __ATOMIC_RELAXED))
+        {
             arch_lcpu_relax();
+            if (deadlock_cnt++ >= 3'000'000)
+                panic("Deadlock occured. Return addr: %llx", __builtin_return_address(0));
+        }
     }
 }
 
