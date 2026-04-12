@@ -12,7 +12,6 @@
 #include "utils/container_of.h"
 #include "utils/list.h"
 #include "utils/string.h"
-#include <string.h>
 
 static uint32_t next_pid = 0;
 static list_t proc_list = LIST_INIT;
@@ -149,7 +148,7 @@ void proc_destroy(proc_t *proc)
     while (!list_is_empty(&proc->threads))
     {
         list_node_t *n = list_pop_head(&proc->threads);
-        thread_t *t = LIST_GET_CONTAINER(n, thread_t, proc_thread_list_node);
+        thread_t *t = container_of(n, thread_t, proc_thread_list_node);
         thread_destroy(t);
     }
 
@@ -199,7 +198,7 @@ int proc_execve(proc_t *proc, const char *path,
     while (!list_is_empty(&proc->threads))
     {
         list_node_t *n = list_pop_head(&proc->threads);
-        thread_t *t = LIST_GET_CONTAINER(n, thread_t, proc_thread_list_node);
+        thread_t *t = container_of(n, thread_t, proc_thread_list_node);
         thread_destroy(t);
     }
     vm_addrspace_destroy(proc->as);

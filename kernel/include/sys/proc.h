@@ -2,6 +2,7 @@
 
 #include "mm/vm.h"
 #include "utils/list.h"
+#include "utils/ref.h"
 #include "sys/fd.h"
 #include "sync/spinlock.h"
 
@@ -35,8 +36,8 @@ typedef struct proc
     char *cwd;
 
     list_node_t proc_list_node;
+    ref_t refcount;
     spinlock_t slock;
-    size_t ref_count;
 }
 proc_t;
 

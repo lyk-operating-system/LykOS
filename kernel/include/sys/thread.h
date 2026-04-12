@@ -3,6 +3,7 @@
 #include "arch/thread.h"
 #include "sys/proc.h"
 #include "utils/list.h"
+#include "utils/ref.h"
 #include <stdint.h>
 
 typedef struct smp_cpu cpu_t;
@@ -37,8 +38,8 @@ struct thread
 
     list_node_t proc_thread_list_node;
     list_node_t sched_thread_list_node;
+    ref_t refcount;
     spinlock_t slock;
-    size_t ref_count;
 };
 
 int thread_create_kernel(vm_addrspace_t *as, uintptr_t entry, size_t stack_size,
