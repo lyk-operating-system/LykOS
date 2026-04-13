@@ -19,6 +19,7 @@ int x86_64_abi_stack_setup(vm_addrspace_t *as, size_t stack_size,
         NULL, 0,
         &stack_base
     );
+    log(LOG_WARN, "sb %p", stack_base);
     if (err != EOK)
         return err;
 
@@ -57,7 +58,7 @@ int x86_64_abi_stack_setup(vm_addrspace_t *as, size_t stack_size,
     vm_zero_out_user(as, (uintptr_t)sp, sizeof(uint64_t));
 
     // Push envp pointers
-    for (int i = envc - 1; i >= 0; i--)
+    for (int i = (int)envc - 1; i >= 0; i--)
     {
         sp -= sizeof(uintptr_t);
         uintptr_t val = (uintptr_t)envp_ptrs[i];
@@ -69,7 +70,7 @@ int x86_64_abi_stack_setup(vm_addrspace_t *as, size_t stack_size,
     vm_zero_out_user(as, (uintptr_t)sp, sizeof(uint64_t));
 
     // Push argv pointers
-    for (int i = argc - 1; i >= 0; i--)
+    for (int i = (int)argc - 1; i >= 0; i--)
     {
         sp -= sizeof(uintptr_t);
         uintptr_t val = (uintptr_t)argv_ptrs[i];
@@ -81,5 +82,6 @@ int x86_64_abi_stack_setup(vm_addrspace_t *as, size_t stack_size,
     vm_copy_to_user(as, (uintptr_t)sp, &argc, sizeof(uintptr_t));
 
     *out_sp = sp;
+    log(LOG_WARN, "sp %p", sp);
     return EOK;
 }

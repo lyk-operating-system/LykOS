@@ -29,11 +29,11 @@ static void reaper_main()
         FOREACH(n, threads_queue)
         {
             thread_t *t = container_of(n, thread_t, sched_thread_list_node);
-            if (t->ref_count != 0)
+            if (t->refcount != 0)
                 continue;
 
             spinlock_acquire(&t->owner->slock);
-            if (t->ref_count != 0)
+            if (t->refcount != 0)
             {
                 spinlock_release(&t->owner->slock);
                 continue;
@@ -41,7 +41,7 @@ static void reaper_main()
             list_remove(&t->owner->threads, &t->proc_thread_list_node);
             spinlock_release(&t->owner->slock);
 
-            thread_free(t);
+            thread_destroy(t);
         }
 
         spinlock_release(&slock_threads);

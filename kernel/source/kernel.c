@@ -8,6 +8,7 @@
 #include "mod/module.h"
 #include "panic.h"
 #include "sys/elf.h"
+#include "sys/proc.h"
 #include "sys/sched.h"
 #include "sys/smp.h"
 #include "uapi/errno.h"
@@ -74,11 +75,15 @@ static void load_init_proc()
     const char *argv[] = { "test", NULL };
     const char *envp[] = { NULL };
 
-    // TODO: error checking preferably via error codes
-
-    proc_create_user(NULL, "/boot/init", argv, envp);
-    proc_create_user(NULL, "/boot/server", argv, envp);
-    proc_create_user(NULL, "/boot/client", argv, envp);
+    proc_t *init_proc;
+    if (proc_create_user(NULL, "/boot/init", argv, envp, &init_proc) != EOK)
+        panic("");
+    proc_t *server_proc;
+    if (proc_create_user(NULL, "/boot/server", argv, envp, &server_proc) != EOK)
+        panic("");
+    proc_t *client_proc;
+    if (proc_create_user(NULL, "/boot/client", argv, envp, &client_proc) != EOK)
+        panic("");
 }
 
 void kernel_main()

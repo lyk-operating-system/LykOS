@@ -45,7 +45,7 @@ proc_t;
  * Create, destroy, and fork
  */
 
-proc_t *proc_create_kernel(const char *name);
+int proc_create_kernel(const char *name, proc_t **out_proc);
 
 int proc_create_user(proc_t *parent, const char *path, const char *const argv[],
                      const char *const envp[], proc_t **out_proc);

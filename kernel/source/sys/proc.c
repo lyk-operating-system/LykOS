@@ -3,6 +3,7 @@
 #include "assert.h"
 #include "log.h"
 #include "mm/heap.h"
+#include "mm/mm.h"
 #include "mm/vm.h"
 #include "sys/elf.h"
 #include "sys/fd.h"
@@ -11,6 +12,7 @@
 #include "uapi/errno.h"
 #include "utils/container_of.h"
 #include "utils/list.h"
+#include "utils/ref.h"
 #include "utils/string.h"
 
 static uint32_t next_pid = 0;
@@ -26,19 +28,27 @@ static inline uint32_t new_pid()
     return ret;
 }
 
-proc_t *proc_create_kernel(const char *name)
+int proc_create_kernel(const char *name, proc_t **out_proc)
 {
     ASSERT(name);
 
+    int err = EOK;
+
     proc_t *proc = heap_alloc(sizeof(proc_t));
     if (!proc)
+    {
+        err = ENOMEM;
         goto fail;
+    }
     memset(proc, 0, sizeof(proc_t));
     proc->pid = new_pid();
     proc->parent = NULL;
     proc->name = strdup(name);
     if (!proc->name)
+    {
+        err = ENOMEM;
         goto fail;
+    }
     proc->user = false;
     proc->status = PROC_STATE_NEW;
     proc->as = vm_kernel_as;
@@ -47,34 +57,43 @@ proc_t *proc_create_kernel(const char *name)
     proc->cwd = NULL;
     proc->proc_list_node = LIST_NODE_INIT;
     proc->slock = SPINLOCK_INIT;
-    proc->ref_count = 1;
+    proc->refcount = REF_INIT;
 
     spinlock_acquire(&slock);
     list_append(&proc_list, &proc->proc_list_node);
     spinlock_release(&slock);
 
-    return proc;
+    *out_proc = proc;
+    return EOK;
 
 fail:
     log(LOG_ERROR, "Failed to create kernel process!");
 
-    if (!proc) return NULL;
-    if (proc->name) heap_free(proc->name);
+    if (!proc)
+    {
+        *out_proc = NULL;
+        return ENOMEM;
+    }
+    if (proc->cwd) heap_free(proc->cwd);
     heap_free(proc);
 
-    return NULL;
+    *out_proc = NULL;
+    return err;
 }
 
 int proc_create_user(proc_t *parent, const char *path, const char *const argv[],
                      const char *const envp[], proc_t **out_proc)
 {
-    ASSERT(parent && path && argv && envp && out_proc);
+    ASSERT(path && argv && envp && out_proc);
 
     int err = EOK;
 
     proc_t *proc = heap_alloc(sizeof(proc_t));
     if (!proc)
+    {
+        err = ENOMEM;
         goto fail;
+    }
     memset(proc, 0, sizeof(proc_t));
     proc->pid = new_pid();
     proc->parent = parent;
@@ -83,17 +102,26 @@ int proc_create_user(proc_t *parent, const char *path, const char *const argv[],
     proc->status = PROC_STATE_NEW;
     proc->as = vm_addrspace_create();
     if (!proc->as)
+    {
+        err = ENOMEM;
         goto fail;
+    }
     proc->threads = LIST_INIT;
     proc->fd_table = fd_table_create();
     if (!proc->fd_table)
+    {
+        err = ENOMEM;
         goto fail;
+    }
     proc->cwd = parent ? strdup(parent->cwd) : strdup("/");
     if (!proc->cwd)
+    {
+        err = ENOMEM;
         goto fail;
+    }
     proc->proc_list_node = LIST_NODE_INIT;
     proc->slock = SPINLOCK_INIT;
-    proc->ref_count = 1;
+    proc->refcount = REF_INIT;
 
     void *entry = NULL;
     char *interpreter = NULL;
@@ -102,7 +130,7 @@ int proc_create_user(proc_t *parent, const char *path, const char *const argv[],
         goto fail;
 
     thread_t *initial_thread = NULL;
-    err = thread_create_user(proc->as, (uintptr_t)entry, 8192, argv, envp,
+    err = thread_create_user(proc->as, (uintptr_t)entry, 2 * MIB, argv, envp,
                              &initial_thread);
     if (err != EOK)
         goto fail;
@@ -130,8 +158,8 @@ fail:
     if (proc->fd_table) fd_table_destroy(proc->fd_table);
     if (proc->cwd) heap_free(proc->cwd);
     heap_free(proc);
-    *out_proc = NULL;
 
+    *out_proc = NULL;
     return err;
 }
 
@@ -237,7 +265,7 @@ proc_t *proc_fork(proc_t *proc, thread_t *calling_thread)
         goto fail;
     new_proc->proc_list_node = LIST_NODE_INIT;
     new_proc->slock = SPINLOCK_INIT;
-    new_proc->ref_count = 1;
+    new_proc->refcount = REF_INIT;
 
     // Duplicate the calling thread
     thread_t *new_thread = thread_duplicate(calling_thread);

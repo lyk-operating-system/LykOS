@@ -6,6 +6,7 @@
 #include "mm/mm.h"
 #include "sys/thread.h"
 #include "uapi/errno.h"
+#include "utils/ref.h"
 
 static uint32_t next_tid = 0;
 static spinlock_t slock = SPINLOCK_INIT;
@@ -39,8 +40,8 @@ int thread_create_kernel(vm_addrspace_t *as, uintptr_t entry, size_t stack_size,
     thread->proc_thread_list_node = LIST_NODE_INIT;
     thread->sched_thread_list_node = LIST_NODE_INIT;
     thread->slock = SPINLOCK_INIT;
-    thread->ref_count = 1;
-    const char *argv[] = { "kernel", NULL };
+    thread->refcount = REF_INIT;
+    const char *argv[] = { "test", NULL };
     const char *envp[] = { NULL };
     err = arch_thread_context_init(&thread->context, as, false, entry,
                                    stack_size, argv, envp);
@@ -67,7 +68,7 @@ int thread_create_user(vm_addrspace_t *as, uintptr_t entry, size_t stack_size,
     if (!thread)
         return ENOMEM;
     thread->tid = new_tid();
-    thread->owner = NULL;
+    thread->owner = NULL; // To be set by caller.
     thread->priority = 0;
     thread->status = THREAD_STATE_NEW;
     thread->last_ran = 0;
@@ -76,7 +77,7 @@ int thread_create_user(vm_addrspace_t *as, uintptr_t entry, size_t stack_size,
     thread->proc_thread_list_node = LIST_NODE_INIT;
     thread->sched_thread_list_node = LIST_NODE_INIT;
     thread->slock = SPINLOCK_INIT;
-    thread->ref_count = 1;
+    thread->refcount = REF_INIT;
     err = arch_thread_context_init(&thread->context, as, true, entry,
                                    stack_size, argv, envp);
     if (err != EOK)
@@ -116,7 +117,7 @@ thread_t *thread_duplicate(thread_t *thread)
     new_thread->proc_thread_list_node = LIST_NODE_INIT;
     new_thread->sched_thread_list_node = LIST_NODE_INIT;
     new_thread->slock = SPINLOCK_INIT;
-    new_thread->ref_count = 1;
+    new_thread->refcount = REF_INIT;
 
     return new_thread;
 

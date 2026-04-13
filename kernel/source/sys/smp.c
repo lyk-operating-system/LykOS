@@ -36,16 +36,19 @@ void smp_init()
     if (bootreq_mp.response == NULL)
         panic("Invalid SMP info provided by the bootloader!");
 
-    idle_proc = proc_create_kernel("System Idle Process");
+    if(proc_create_kernel("System Idle Process", &idle_proc) != EOK)
+        panic("Could not create the system idle process!");
 
     for (size_t i = 0; i < bootreq_mp.response->cpu_count; i++)
     {
         struct limine_mp_info *mp_info = bootreq_mp.response->cpus[i];
 
         thread_t *idle_thread;
-        int err = thread_create(idle_proc, (uintptr_t)&thread_idle_func, 4096, NULL, NULL, &idle_thread);
-        if (err != EOK)
+        if (thread_create_kernel(idle_proc->as, (uintptr_t)&thread_idle_func, 4096, &idle_thread) != EOK)
             panic("Could not create idle threads!");
+        idle_thread->owner = idle_proc;
+        list_append(&idle_proc->threads, &idle_thread->proc_thread_list_node);
+
         smp_cpu_t *cpu = heap_alloc(sizeof(smp_cpu_t));
         *cpu = (smp_cpu_t) {
             .id = i,
@@ -54,6 +57,7 @@ void smp_init()
             .cpu_list_node = LIST_NODE_INIT
         };
         list_append(&smp_cpus, &cpu->cpu_list_node);
+
         idle_thread->assigned_cpu = cpu;
 
         mp_info->extra_argument = (uint64_t)idle_thread;
