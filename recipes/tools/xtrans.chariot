@@ -1,0 +1,21 @@
+tool/xtrans {
+    dependencies: [
+        source/xtrans
+        image/meson
+        tool/gcc tool/binutils tool/pkgconf tool/xorgproto
+    ]
+
+    configure: <sh>
+        $SOURCES_DIR/xtrans/configure \
+            --prefix=$PREFIX \
+            --host=x86_64-lykos \
+    </sh>
+
+    build: <sh>
+        make -j$PARALLELISM
+    </sh>
+
+    install: <sh>
+        DESTDIR=$INSTALL_DIR make install
+    </sh>
+}

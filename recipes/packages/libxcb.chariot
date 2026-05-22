@@ -1,0 +1,34 @@
+source/libxcb {
+    url: "https://xorg.freedesktop.org/archive/individual/lib/libxcb-1.15.tar.xz"
+    type: "tar.xz"
+    b2sum: "d50146ee9b822dfd0c24513110e1706cda05ce588f276005167a911d3097275f36be1ce755c42c2b2970e750f10b2b943f3e373b6e55865fba986e29811a3545"
+    dependencies: [
+        tool/autoconf tool/automake tool/libtool tool/pkgconf tool/util-macros
+        package/libxau
+    ]
+    regenerate: <sh>
+        autoreconf -fvi
+    </sh>
+}
+
+package/libxcb {
+    dependencies: [
+        source/libxcb
+        tool/gcc tool/binutils tool/pkgconf
+        package/libpthread-stubs package/libxau package/xcb-proto package/xorgproto
+    ]
+
+    configure: <sh>
+        $SOURCES_DIR/libxcb/configure \
+            --prefix=$PREFIX \
+            --host=x86_64-lykos
+    </sh>
+
+    build: <sh>
+        make -j$PARALLELISM
+    </sh>
+
+    install: <sh>
+        DESTDIR=$INSTALL_DIR make install
+    </sh>
+}

@@ -10,8 +10,8 @@ source/mlibc {
 
 package/mlibc_headers {
     dependencies: [
-        source/mlibc
-        image/meson
+        source/linux source/mlibc
+        image/build-essential image/meson image/rsync
         tool/pkgconf
     ]
     configure: <sh>
@@ -26,6 +26,7 @@ package/mlibc_headers {
         ninja -j$PARALLELISM
     </sh>
     install: <sh>
+        make -C $SOURCES_DIR/linux O=$BUILD_DIR headers_install ARCH=x86_64 INSTALL_HDR_PATH=$INSTALL_DIR$PREFIX
         DESTDIR=$INSTALL_DIR ninja install
     </sh>
 }
@@ -33,7 +34,7 @@ package/mlibc_headers {
 package/mlibc {
     dependencies: [
         source/mlibc source/support
-        image/meson
+        image/g++ image/meson
         tool/gcc_bootstrap tool/pkgconf
         package/mlibc_headers
     ]
@@ -45,7 +46,11 @@ package/mlibc {
             --buildtype=debug \
             -Dno_headers=true \
             -Ddefault_library=both \
-            -Dlinux_option=disabled \
+            -Dlinux_kernel_headers=$SYSROOT_DIR$PREFIX/include \
+            -Dposix_option=enabled \
+            -Dlinux_option=enabled \
+            -Dglibc_option=enabled \
+            -Dbsd_option=enabled \
             $SOURCES_DIR/mlibc
     </sh>
     build: <sh>

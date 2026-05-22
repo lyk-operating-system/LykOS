@@ -1,0 +1,32 @@
+source/libpthread-stubs {
+    url: "https://xorg.freedesktop.org/archive/individual/lib/libpthread-stubs-0.5.tar.xz"
+    type: "tar.xz"
+    b2sum: "df84742e6695c64b33c82130765fa4bc3f908874aa868ae6543008a569ef79e384b562a6946e25b45331898d5df55c3bfd2e907a03bda15aca3993917baf6e50"
+    dependencies: [
+        tool/autoconf tool/automake tool/libtool
+    ]
+    regenerate: <sh>
+        autoreconf -fvi
+    </sh>
+}
+
+package/libpthread-stubs {
+    dependencies: [
+        source/libpthread-stubs
+        tool/gcc tool/binutils tool/pkgconf
+    ]
+
+    configure: <sh>
+        $SOURCES_DIR/libpthread-stubs/configure \
+            --prefix=$PREFIX \
+            --host=x86_64-lykos
+    </sh>
+
+    build: <sh>
+        make -j$PARALLELISM
+    </sh>
+
+    install: <sh>
+        DESTDIR=$INSTALL_DIR make install
+    </sh>
+}

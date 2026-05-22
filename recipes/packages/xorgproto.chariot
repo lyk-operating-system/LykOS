@@ -1,0 +1,24 @@
+package/xorgproto {
+    dependencies: [
+        source/support source/xorgproto
+        image/meson
+        tool/gcc tool/binutils tool/pkgconf
+    ]
+
+    configure: <sh>
+        meson setup \
+            --cross-file $SOURCES_DIR/support/cross-files/lykos-x86_64.ini \
+            --prefix=$PREFIX \
+            -Dlegacy=true \
+            $SOURCES_DIR/xorgproto
+    </sh>
+
+    build: <sh>
+        ninja -j$PARALLELISM
+    </sh>
+
+    install: <sh>
+        DESTDIR=$INSTALL_DIR ninja install
+        rm -v $INSTALL_DIR/$PREFIX/include/X11/extensions/XKBgeom.h
+    </sh>
+}
